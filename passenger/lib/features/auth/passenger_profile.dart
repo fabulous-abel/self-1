@@ -1,0 +1,34 @@
+class PassengerProfile {
+  const PassengerProfile({
+    required this.fullName,
+    required this.email,
+    required this.phoneNumber,
+  });
+
+  final String fullName;
+  final String email;
+  final String phoneNumber;
+
+  String get initials {
+    final parts = fullName
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((part) => part.isNotEmpty)
+        .toList();
+
+    if (parts.isEmpty) {
+      return 'PA';
+    }
+    if (parts.length == 1) {
+      final value = parts.first;
+      return value.length == 1
+          ? value.toUpperCase()
+          : value.substring(0, 2).toUpperCase();
+    }
+
+    return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
+  }
+
+  String get phoneLabel =>
+      phoneNumber.isEmpty ? 'Phone not added yet' : phoneNumber;
+}

@@ -1,84 +1,76 @@
-const express = require("express");
+require("dotenv").config({ quiet: true });
+
 const cors = require("cors");
-const env = require("./config/env");
-const { connectToDatabase, getDatabaseState } = require("./config/database");
-const healthRouter = require("./routes/health");
+const express = require("express");
+const helmet = require("helmet");
+const morgan = require("morgan");
 
-function createCorsOriginValidator(allowedOrigins, nodeEnv) {
-  return function validateOrigin(origin, callback) {
-    if (!origin) {
-      return callback(null, true);
-    }
-
-    if (allowedOrigins.length === 0) {
-      if (nodeEnv !== "production") {
-        return callback(null, true);
-      }
-
-      return callback(new Error("CORS origin is not configured for production"));
-    }
-
-    if (allowedOrigins.includes(origin)) {
-      return callback(null, true);
-    }
-
-    return callback(new Error("CORS origin not allowed"));
-  };
-}
+const connectDB = require("./config/db");
+const apiRouter = require("./routes");
+const parseOrigins = require("./utils/parseOrigins");
 
 const app = express();
+const apiPrefix = process.env.API_PREFIX || "/api";
+const isVercel =
+  process.env.VERCEL === "1" ||
+  process.env.VERCEL === "true" ||
+  process.env.VERCEL_ENV !== undefined;
+const corsOrigins = parseOrigins(
+  process.env.CLIENT_URL || process.env.SOCKET_CORS_ORIGIN || "*",
+);
 
 app.disable("x-powered-by");
-app.locals.connectToDatabase = connectToDatabase;
-app.locals.env = env;
+app.set("io", null);
+app.set("runtime", isVercel ? "vercel" : "node");
 
-const corsOptions = {
-  origin: createCorsOriginValidator(env.allowedOrigins, env.nodeEnv),
-  credentials: true,
-  methods: ["GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"]
-};
-
-app.use(cors(corsOptions));
-app.use(express.json({ limit: "1mb" }));
+app.use(
+  cors({
+    origin: corsOrigins,
+    credentials: true,
+  }),
+);
+app.use(helmet());
+app.use(morgan("dev"));
+app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(async (req, res, next) => {
+  try {
+    await connectDB();
+    return next();
+  } catch (error) {
+    return next(error);
+  }
+});
 
 app.get("/", (req, res) => {
   res.json({
-    name: "backend",
+    name: "Self(queue) Backend",
     status: "ok",
-    runtime: env.isVercel ? "vercel" : "node",
-    apiPrefix: env.apiPrefix || "/",
-    database: {
-      configured: env.hasMongoUri,
-      state: env.hasMongoUri ? getDatabaseState() : "not-configured"
-    },
+    runtime: req.app.get("runtime"),
+    apiPrefix,
     realtime: {
-      websocketServerSupported: !env.isVercel
-    }
+      websocketServerSupported: !isVercel,
+    },
   });
 });
 
-app.use(env.apiPrefix || "/", healthRouter);
+app.use(apiPrefix, apiRouter);
 
 app.use((req, res) => {
   res.status(404).json({
-    message: "Route not found"
+    message: "Route not found",
   });
 });
 
-app.use((error, req, res, next) => {
-  if (res.headersSent) {
-    return next(error);
+app.use((err, req, res, next) => {
+  const statusCode = err.statusCode || 500;
+
+  if (statusCode >= 500) {
+    console.error(err);
   }
 
-  const statusCode =
-    error.message === "CORS origin not allowed" ||
-    error.message === "CORS origin is not configured for production"
-      ? 403
-      : 500;
-
   res.status(statusCode).json({
-    message: statusCode === 500 ? "Internal server error" : error.message
+    message: err.message || "Internal server error",
   });
 });
 
