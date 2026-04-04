@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../core/services/queue_api_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../auth/passenger_profile.dart';
 
@@ -30,6 +31,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
   ];
   static const _queues = [
     _QueueItem(
+      backendId: 'bole-airport',
       title: 'Bole Airport Stand',
       subtitle: 'Taxi lane with fast turnover and airport pickups.',
       route: 'Airport Terminal to Bole Atlas',
@@ -43,6 +45,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
       keywords: ['airport', 'bole', 'atlas', 'taxi', 'terminal'],
     ),
     _QueueItem(
+      backendId: 'mexico-square',
       title: 'Mexico Square Hub',
       subtitle: 'Bus queue with the shortest public route wait.',
       route: 'Mexico Square to Piassa',
@@ -56,6 +59,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
       keywords: ['mexico', 'bus', 'piassa', 'square', 'public'],
     ),
     _QueueItem(
+      backendId: 'piassa-hub',
       title: 'Kazanchis Pickup',
       subtitle: 'Shared ride queue close to offices and hotels.',
       route: 'Kazanchis to Meskel Square',
@@ -82,6 +86,15 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
   double _mapZoom = 13.4;
   LatLng _mapCenter = _queues.first.point;
 
+  // ── Live queue state ───────────────────────────────────────────
+  String? _activeQueueId;         // backend ID of the joined queue
+  int? _queuePosition;            // current position (1 = next)
+  int? _estimatedWaitMinutes;
+  bool _yourTurn = false;
+  bool _isJoining = false;
+  bool _isLeaving = false;
+  VoidCallback? _cancelSocketSub; // call to unsubscribe
+
   @override
   void initState() {
     super.initState();
@@ -91,6 +104,8 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
 
   @override
   void dispose() {
+    _cancelSocketSub?.call();
+    QueueApiService.instance.disconnectSocket();
     _searchController.dispose();
     _sheetController.dispose();
     _mapController.dispose();
@@ -161,9 +176,85 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
     _moveMap(queue.point, zoom: zoom);
   }
 
-  void _joinQueue(_QueueItem queue) {
+  Future<void> _joinQueue(_QueueItem queue) async {
+    final token = widget.profile.token;
+    if (token == null) {
+      _showMessage('Server offline — cannot join queue right now.');
+      return;
+    }
+    if (_activeQueueId != null) {
+      _showMessage('Leave your current queue first.');
+      return;
+    }
+
+    setState(() => _isJoining = true);
     _selectQueue(queue, tab: 1);
-    _showMessage('You joined ${queue.title}');
+
+    try {
+      final result = await QueueApiService.instance.joinQueue(
+        queue.backendId,
+        token,
+      );
+      if (result == null) throw Exception('No response from server.');
+
+      setState(() {
+        _activeQueueId = queue.backendId;
+        _queuePosition = result.position;
+        _estimatedWaitMinutes = result.estimatedWaitMinutes;
+        _yourTurn = result.yourTurn;
+      });
+
+      // Subscribe to real-time position updates
+      _cancelSocketSub?.call();
+      _cancelSocketSub = QueueApiService.instance.subscribeToQueue(
+        queue.backendId,
+        token,
+        (update) {
+          if (!mounted) return;
+          setState(() {
+            _queuePosition = update.position;
+            _estimatedWaitMinutes = update.estimatedWaitMinutes;
+            _yourTurn = update.yourTurn;
+          });
+        },
+      );
+
+      final pos = result.position;
+      final wait = result.estimatedWaitMinutes;
+      _showMessage(
+        result.yourTurn
+            ? '🔔 It\'s your turn! Head to ${queue.title}.'
+            : 'Joined ${queue.title}. You are #$pos · ~$wait min wait.',
+      );
+    } catch (e) {
+      _showMessage(e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _isJoining = false);
+    }
+  }
+
+  Future<void> _leaveQueue() async {
+    final queueId = _activeQueueId;
+    final token = widget.profile.token;
+    if (queueId == null || token == null) return;
+
+    setState(() => _isLeaving = true);
+    try {
+      await QueueApiService.instance.leaveQueue(queueId, token);
+      _cancelSocketSub?.call();
+      _cancelSocketSub = null;
+      setState(() {
+        _activeQueueId = null;
+        _queuePosition = null;
+        _estimatedWaitMinutes = null;
+        _yourTurn = false;
+      });
+      _showMessage('You left the queue.');
+    } catch (e) {
+      _showMessage(e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _isLeaving = false);
+    }
   }
 
   void _moveMap(LatLng center, {double? zoom}) {
@@ -178,20 +269,34 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
     _moveMap(_mapCenter, zoom: nextZoom);
   }
 
-  double _collapsedSheetSize(bool compact) => compact ? 0.22 : 0.19;
+  // Bottom nav bar height in logical pixels (approx 68px).
+  static const double _navBarHeight = 68.0;
 
-  double _midSheetSize(bool compact) => compact ? 0.46 : 0.42;
+  double _collapsedSheetSize(bool compact, double screenH) =>
+      (_navBarHeight + (compact ? 58 : 52)) / screenH;
 
-  double _expandedSheetSize(bool compact) => compact ? 0.84 : 0.74;
+  double _midSheetSize(bool compact) => compact ? 0.48 : 0.44;
 
-  void _toggleSheet(bool compact) {
-    final target = _sheetExtent > _midSheetSize(compact) + 0.04
-        ? _midSheetSize(compact)
-        : _collapsedSheetSize(compact);
+  double _expandedSheetSize(bool compact) => compact ? 0.86 : 0.76;
+
+  void _toggleSheet(bool compact, double screenH) {
+    final collapsed = _collapsedSheetSize(compact, screenH);
+    final mid = _midSheetSize(compact);
+    final expanded = _expandedSheetSize(compact);
+
+    // Cycle: collapsed → mid → expanded → back to mid
+    double target;
+    if (_sheetExtent < collapsed + 0.05) {
+      target = mid;
+    } else if (_sheetExtent < mid + 0.08) {
+      target = expanded;
+    } else {
+      target = mid;
+    }
 
     _sheetController.animateTo(
       target,
-      duration: const Duration(milliseconds: 240),
+      duration: const Duration(milliseconds: 300),
       curve: Curves.easeOutCubic,
     );
   }
@@ -210,12 +315,30 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
       );
     }
 
+    // Live status card – shown at the top of every tab when in a queue
+    final activeQueue = _activeQueueId == null
+        ? null
+        : _queues.where((q) => q.backendId == _activeQueueId).firstOrNull;
+
+    Widget? statusCard;
+    if (activeQueue != null && _queuePosition != null) {
+      statusCard = _LiveStatusCard(
+        queue: activeQueue,
+        position: _queuePosition!,
+        estimatedWait: _estimatedWaitMinutes ?? 0,
+        yourTurn: _yourTurn,
+        isLeaving: _isLeaving,
+        onLeave: _leaveQueue,
+      );
+    }
+
     switch (_selectedTab) {
       case 1:
         return ListView(
           controller: scrollController,
           padding: const EdgeInsets.fromLTRB(18, 0, 18, 20),
           children: [
+            if (statusCard != null) ...[statusCard, const SizedBox(height: 12)],
             _detailCard(compact),
             const SizedBox(height: 12),
             ...visibleQueues
@@ -233,6 +356,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
           controller: scrollController,
           padding: const EdgeInsets.fromLTRB(18, 0, 18, 20),
           children: [
+            if (statusCard != null) ...[statusCard, const SizedBox(height: 12)],
             _ActivityTile(
               title: 'Queue joined',
               subtitle:
@@ -257,10 +381,13 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
         return ListView.separated(
           controller: scrollController,
           padding: const EdgeInsets.fromLTRB(18, 0, 18, 20),
-          itemCount: visibleQueues.length,
+          itemCount: visibleQueues.length + (statusCard != null ? 1 : 0),
           separatorBuilder: (context, index) => const SizedBox(height: 12),
-          itemBuilder: (context, index) =>
-              _queueCard(visibleQueues[index], compact, 'Join'),
+          itemBuilder: (context, index) {
+            if (statusCard != null && index == 0) return statusCard;
+            final qIndex = statusCard != null ? index - 1 : index;
+            return _queueCard(visibleQueues[qIndex], compact, 'Join');
+          },
         );
     }
   }
@@ -365,6 +492,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
   }
 
   Widget _detailCard(bool compact) {
+    final isActive = _selectedQueue.backendId == _activeQueueId;
     return Container(
       decoration: BoxDecoration(
         color: const Color(0xFFF8FBFF),
@@ -459,10 +587,21 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                     children: [
                       SizedBox(
                         width: double.infinity,
-                        child: FilledButton(
-                          onPressed: () => _joinQueue(_selectedQueue),
-                          child: const Text('Join selected queue'),
-                        ),
+                        child: isActive
+                            ? OutlinedButton.icon(
+                                onPressed: _isLeaving ? null : _leaveQueue,
+                                icon: _isLeaving
+                                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                                    : const Icon(Icons.exit_to_app_rounded),
+                                label: Text(_isLeaving ? 'Leaving...' : 'Leave queue'),
+                              )
+                            : FilledButton.icon(
+                                onPressed: (_isJoining || _activeQueueId != null) ? null : () => _joinQueue(_selectedQueue),
+                                icon: _isJoining
+                                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                    : const Icon(Icons.add_rounded),
+                                label: Text(_isJoining ? 'Joining...' : 'Join selected queue'),
+                              ),
                       ),
                       const SizedBox(height: 10),
                       SizedBox(
@@ -477,10 +616,21 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                 : Row(
                     children: [
                       Expanded(
-                        child: FilledButton(
-                          onPressed: () => _joinQueue(_selectedQueue),
-                          child: const Text('Join selected queue'),
-                        ),
+                        child: isActive
+                            ? OutlinedButton.icon(
+                                onPressed: _isLeaving ? null : _leaveQueue,
+                                icon: _isLeaving
+                                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                                    : const Icon(Icons.exit_to_app_rounded),
+                                label: Text(_isLeaving ? 'Leaving...' : 'Leave queue'),
+                              )
+                            : FilledButton.icon(
+                                onPressed: (_isJoining || _activeQueueId != null) ? null : () => _joinQueue(_selectedQueue),
+                                icon: _isJoining
+                                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                    : const Icon(Icons.add_rounded),
+                                label: Text(_isJoining ? 'Joining...' : 'Join selected queue'),
+                              ),
                       ),
                       const SizedBox(width: 10),
                       Expanded(
@@ -499,18 +649,27 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
 
   Widget _queueCard(_QueueItem queue, bool compact, String action) {
     final selected = queue == _selectedQueue;
+    final isThisActive = queue.backendId == _activeQueueId;
+    final canJoin = !_isJoining && _activeQueueId == null;
+
     return InkWell(
       onTap: () => _focusQueue(queue, tab: 1),
       borderRadius: BorderRadius.circular(24),
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: selected ? const Color(0xFFFFF6F0) : const Color(0xFFF8FBFF),
+          color: isThisActive
+              ? PassengerColors.teal.withValues(alpha: 0.06)
+              : selected
+                  ? const Color(0xFFFFF6F0)
+                  : const Color(0xFFF8FBFF),
           borderRadius: BorderRadius.circular(24),
           border: Border.all(
-            color: selected
-                ? queue.color.withValues(alpha: 0.36)
-                : const Color(0xFFE6EDF5),
+            color: isThisActive
+                ? PassengerColors.teal.withValues(alpha: 0.36)
+                : selected
+                    ? queue.color.withValues(alpha: 0.36)
+                    : const Color(0xFFE6EDF5),
           ),
         ),
         child: compact
@@ -521,13 +680,19 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                   const SizedBox(height: 14),
                   SizedBox(
                     width: double.infinity,
-                    child: FilledButton(
-                      onPressed: () => _joinQueue(queue),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: queue.color,
-                      ),
-                      child: Text(action),
-                    ),
+                    child: isThisActive
+                        ? OutlinedButton.icon(
+                            onPressed: _isLeaving ? null : _leaveQueue,
+                            icon: const Icon(Icons.exit_to_app_rounded, size: 18),
+                            label: Text(_isLeaving ? 'Leaving...' : 'Leave queue'),
+                          )
+                        : FilledButton(
+                            onPressed: canJoin ? () => _joinQueue(queue) : null,
+                            style: FilledButton.styleFrom(
+                              backgroundColor: queue.color,
+                            ),
+                            child: Text(action),
+                          ),
                   ),
                 ],
               )
@@ -535,11 +700,17 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                 children: [
                   Expanded(child: _queueSummary(queue)),
                   const SizedBox(width: 12),
-                  FilledButton(
-                    onPressed: () => _joinQueue(queue),
-                    style: FilledButton.styleFrom(backgroundColor: queue.color),
-                    child: Text(action),
-                  ),
+                  isThisActive
+                      ? OutlinedButton.icon(
+                          onPressed: _isLeaving ? null : _leaveQueue,
+                          icon: const Icon(Icons.exit_to_app_rounded, size: 18),
+                          label: Text(_isLeaving ? 'Leaving...' : 'Leave'),
+                        )
+                      : FilledButton(
+                          onPressed: canJoin ? () => _joinQueue(queue) : null,
+                          style: FilledButton.styleFrom(backgroundColor: queue.color),
+                          child: Text(action),
+                        ),
                 ],
               ),
       ),
@@ -639,54 +810,24 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: PassengerColors.shell,
-      drawer: NavigationDrawer(
-        selectedIndex: _selectedTab,
-        onDestinationSelected: (index) {
-          setState(() => _selectedTab = index);
-          if (_query.isNotEmpty && index == 0) {
-            _clearSearch();
-          }
-          Navigator.pop(context);
-        },
-        children: [
-          const Padding(
-            padding: EdgeInsets.fromLTRB(28, 24, 28, 16),
-            child: Text(
-              'Menu',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-                color: PassengerColors.ink,
-              ),
-            ),
-          ),
-          ...List.generate(
-            _labels.length,
-            (index) => NavigationDrawerDestination(
-              icon: Icon(
-                _icons[index],
-                color: _selectedTab == index
-                    ? PassengerColors.orange
-                    : const Color(0xFF95A4BD),
-              ),
-              label: Text(_labels[index]),
-            ),
-          ),
-        ],
-      ),
+      // No drawer — navigation is now always visible in the bottom bar.
       body: SafeArea(
         bottom: false,
         child: LayoutBuilder(
           builder: (context, constraints) {
             final compact =
                 constraints.maxWidth < 390 || constraints.maxHeight < 720;
-            final collapsedSize = _collapsedSheetSize(compact);
+            final screenH = constraints.maxHeight;
+            final collapsedSize = _collapsedSheetSize(compact, screenH);
             final midSize = _midSheetSize(compact);
             final expandedSize = _expandedSheetSize(compact);
 
             return Stack(
               children: [
+                // ── Map layer ─────────────────────────────────────────────
                 Positioned.fill(child: _buildMap(compact)),
+
+                // ── Subtle vignette ────────────────────────────────────────
                 Positioned.fill(
                   child: DecoratedBox(
                     decoration: BoxDecoration(
@@ -703,6 +844,8 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                     ),
                   ),
                 ),
+
+                // ── Top header (avatar + search) ───────────────────────────
                 Positioned(
                   left: 16,
                   right: 16,
@@ -711,13 +854,6 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                     children: [
                       Row(
                         children: [
-                          Builder(
-                            builder: (context) => _TopButton(
-                              icon: Icons.menu_rounded,
-                              onTap: () => Scaffold.of(context).openDrawer(),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
                           CircleAvatar(
                             radius: compact ? 22 : 24,
                             backgroundColor: Colors.white,
@@ -825,6 +961,8 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                     ],
                   ),
                 ),
+
+                // ── Zoom controls (float above sheet) ─────────────────────
                 Positioned(
                   right: 18,
                   bottom: constraints.maxHeight * _sheetExtent + 20,
@@ -846,10 +984,12 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                     ),
                   ),
                 ),
+
+                // ── Draggable sheet ────────────────────────────────────────
                 NotificationListener<DraggableScrollableNotification>(
                   onNotification: (notification) {
                     final nextExtent = notification.extent;
-                    if ((nextExtent - _sheetExtent).abs() > 0.01 && mounted) {
+                    if ((nextExtent - _sheetExtent).abs() > 0.003 && mounted) {
                       setState(() => _sheetExtent = nextExtent);
                     }
                     return false;
@@ -881,9 +1021,10 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                         child: Column(
                           children: [
                             const SizedBox(height: 12),
-                            InkWell(
-                              onTap: () => _toggleSheet(compact),
-                              borderRadius: BorderRadius.circular(999),
+                            // Drag handle + title row
+                            GestureDetector(
+                              onTap: () => _toggleSheet(compact, screenH),
+                              behavior: HitTestBehavior.opaque,
                               child: Padding(
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 20,
@@ -892,13 +1033,11 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                                 child: Column(
                                   children: [
                                     Container(
-                                      height: 8,
-                                      width: 88,
+                                      height: 5,
+                                      width: 44,
                                       decoration: BoxDecoration(
                                         color: const Color(0xFFD8E0EC),
-                                        borderRadius: BorderRadius.circular(
-                                          999,
-                                        ),
+                                        borderRadius: BorderRadius.circular(999),
                                       ),
                                     ),
                                     const SizedBox(height: 14),
@@ -935,10 +1074,40 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                                 scrollController: scrollController,
                               ),
                             ),
-                            const SizedBox(height: 16),
+                            // Extra padding so content clears the nav bar
+                            SizedBox(
+                              height: _navBarHeight +
+                                  MediaQuery.of(context).padding.bottom,
+                            ),
                           ],
                         ),
                       );
+                    },
+                  ),
+                ),
+
+                // ── Bottom Navigation Bar (always on top) ─────────────────
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: _BottomNavBar(
+                    selectedIndex: _selectedTab,
+                    icons: _icons,
+                    labels: _labels,
+                    onTap: (index) {
+                      setState(() => _selectedTab = index);
+                      if (_query.isNotEmpty && index == 0) {
+                        _clearSearch();
+                      }
+                      // Snap sheet to mid when switching tabs so content is visible
+                      if (_sheetExtent < midSize - 0.04) {
+                        _sheetController.animateTo(
+                          midSize,
+                          duration: const Duration(milliseconds: 280),
+                          curve: Curves.easeOutCubic,
+                        );
+                      }
                     },
                   ),
                 ),
@@ -966,6 +1135,198 @@ class _TopButton extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(18),
         child: SizedBox(height: 48, width: 48, child: Icon(icon, size: 24)),
+      ),
+    );
+  }
+}
+
+// ── Live Status Card ──────────────────────────────────────────────────────────
+
+class _LiveStatusCard extends StatelessWidget {
+  const _LiveStatusCard({
+    required this.queue,
+    required this.position,
+    required this.estimatedWait,
+    required this.yourTurn,
+    required this.isLeaving,
+    required this.onLeave,
+  });
+
+  final _QueueItem queue;
+  final int position;
+  final int estimatedWait;
+  final bool yourTurn;
+  final bool isLeaving;
+  final VoidCallback onLeave;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = yourTurn ? PassengerColors.orange : PassengerColors.teal;
+    final bg = yourTurn
+        ? PassengerColors.orange.withValues(alpha: 0.08)
+        : PassengerColors.teal.withValues(alpha: 0.07);
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: accent.withValues(alpha: 0.28)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            height: 52,
+            width: 52,
+            decoration: BoxDecoration(
+              color: accent.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Icon(
+              yourTurn ? Icons.notifications_active_rounded : Icons.queue_rounded,
+              color: accent,
+              size: 24,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  yourTurn ? '🔔 Your turn!' : 'You are #$position in line',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: accent,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  yourTurn
+                      ? 'Head to ${queue.title} now.'
+                      : '${queue.title}  ·  ~$estimatedWait min',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF4A6080),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          OutlinedButton(
+            onPressed: isLeaving ? null : onLeave,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: accent,
+              side: BorderSide(color: accent.withValues(alpha: 0.4)),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            ),
+            child: isLeaving
+                ? SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: accent),
+                  )
+                : const Text('Leave', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Bottom Navigation Bar ────────────────────────────────────────────────────
+
+class _BottomNavBar extends StatelessWidget {
+  const _BottomNavBar({
+    required this.selectedIndex,
+    required this.icons,
+    required this.labels,
+    required this.onTap,
+  });
+
+  final int selectedIndex;
+  final List<IconData> icons;
+  final List<String> labels;
+  final ValueChanged<int> onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomPad = MediaQuery.of(context).padding.bottom;
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0B1736).withValues(alpha: 0.08),
+            blurRadius: 20,
+            offset: const Offset(0, -4),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          height: 64 + bottomPad,
+          child: Row(
+            children: List.generate(icons.length, (index) {
+              final selected = index == selectedIndex;
+              return Expanded(
+                child: GestureDetector(
+                  onTap: () => onTap(index),
+                  behavior: HitTestBehavior.opaque,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    curve: Curves.easeOutCubic,
+                    padding: EdgeInsets.only(bottom: bottomPad),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          curve: Curves.easeOutCubic,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: selected
+                                ? PassengerColors.teal.withValues(alpha: 0.12)
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Icon(
+                            icons[index],
+                            size: 22,
+                            color: selected
+                                ? PassengerColors.teal
+                                : const Color(0xFF95A4BD),
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        AnimatedDefaultTextStyle(
+                          duration: const Duration(milliseconds: 200),
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: selected
+                                ? FontWeight.w700
+                                : FontWeight.w500,
+                            color: selected
+                                ? PassengerColors.teal
+                                : const Color(0xFF95A4BD),
+                          ),
+                          child: Text(labels[index]),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ),
+        ),
       ),
     );
   }
@@ -1161,6 +1522,7 @@ class EmptySearchState extends StatelessWidget {
 
 class _QueueItem {
   const _QueueItem({
+    required this.backendId,
     required this.title,
     required this.subtitle,
     required this.route,
@@ -1174,6 +1536,8 @@ class _QueueItem {
     required this.keywords,
   });
 
+  /// ID used by the backend API (e.g. 'bole-airport')
+  final String backendId;
   final String title;
   final String subtitle;
   final String route;

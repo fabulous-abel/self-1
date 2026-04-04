@@ -48,9 +48,13 @@ router.post("/:queueId/join", requireAuth, (req, res) => {
 });
 
 router.post("/:queueId/leave", requireAuth, (req, res) => {
+  // Admins may pass an explicit passengerId in the body to force-remove
+  // any passenger. Regular passengers omit it and their own ID is used.
+  const passengerId = req.body.passengerId || req.user.id;
+
   const removed = removePassengerFromQueue({
     queueId: req.params.queueId,
-    passengerId: req.user.id,
+    passengerId,
     io: req.app.get("io"),
   });
 

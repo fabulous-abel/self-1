@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../core/services/local_auth_service.dart';
+import '../../core/services/queue_api_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../queue/queue_map_screen.dart';
 import 'passenger_profile.dart';
@@ -13,7 +15,7 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  
+
   bool _isLogin = true;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
@@ -22,15 +24,14 @@ class _LoginScreenState extends State<LoginScreen> {
   late final TextEditingController _passwordController;
   late final TextEditingController _confirmPasswordController;
 
-  static final Map<String, String> _registeredUsers = {
-    '+251913269909': '123',
-  };
+  bool _isLoading = false;
+  final PassengerLocalAuthService _authService = PassengerLocalAuthService();
 
   @override
   void initState() {
     super.initState();
     _phoneController = TextEditingController(text: '0913269909');
-    _passwordController = TextEditingController(text: '123');
+    _passwordController = TextEditingController(text: '123456');
     _confirmPasswordController = TextEditingController();
   }
 
@@ -74,6 +75,9 @@ class _LoginScreenState extends State<LoginScreen> {
     if (value == null || value.isEmpty) {
       return 'Enter your password';
     }
+    if (!_isLogin && value.length < 6) {
+      return 'Use at least 6 characters';
+    }
     return null;
   }
 
@@ -88,45 +92,58 @@ class _LoginScreenState extends State<LoginScreen> {
     return null;
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     FocusScope.of(context).unfocus();
-
-    if (!_formKey.currentState!.validate()) {
-      return;
-    }
+    if (!_formKey.currentState!.validate()) return;
 
     final normalizedPhone = _normalizePhone(_phoneController.text);
     final pass = _passwordController.text;
 
-    if (_isLogin) {
-      if (_registeredUsers[normalizedPhone] == pass) {
-        final profile = PassengerProfile(
-          fullName: 'Passenger',
-          email: '',
+    setState(() => _isLoading = true);
+
+    try {
+      PassengerProfile profile;
+      if (_isLogin) {
+        profile = await _authService.login(
           phoneNumber: normalizedPhone,
-        );
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute<void>(
-            builder: (_) => PassengerMapScreen(profile: profile),
-          ),
+          password: pass,
         );
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Invalid phone number or password')),
+        profile = await _authService.register(
+          phoneNumber: normalizedPhone,
+          password: pass,
         );
       }
-    } else {
-      _registeredUsers[normalizedPhone] = pass;
-      final profile = PassengerProfile(
-        fullName: 'New Passenger',
-        email: '',
-        phoneNumber: normalizedPhone,
+
+      // Silently obtain a backend JWT so the Join button can make real API calls.
+      // If the backend is offline this is skipped and the app still works
+      // (Join will show an "offline" message instead of failing silently).
+      final credentials = await QueueApiService.instance.acquireToken(
+        normalizedPhone,
       );
+      if (credentials != null) {
+        profile = PassengerProfile(
+          fullName: profile.fullName,
+          email: profile.email,
+          phoneNumber: profile.phoneNumber,
+          token: credentials.token,
+          userId: credentials.userId,
+        );
+      }
+
+      if (!mounted) return;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute<void>(
           builder: (_) => PassengerMapScreen(profile: profile),
         ),
       );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -167,7 +184,9 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
           SizedBox(height: compact ? 22 : 30),
           Text(
-            _isLogin ? 'Welcome back to the queue.' : 'Join the passenger queue.',
+            _isLogin
+                ? 'Welcome back to the queue.'
+                : 'Join the passenger queue.',
             style: theme.textTheme.headlineLarge?.copyWith(
               color: Colors.white,
               fontSize: compact ? 24 : 28,
@@ -177,67 +196,15 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
           const SizedBox(height: 12),
           Text(
-            _isLogin 
-                ? 'Login with your phone number to find a ride quickly.'
-                : 'Register with your phone number to open access and find available seats.',
+            _isLogin
+                ? 'Login instantly and open the queue map.'
+                : 'Create an account and start finding available seats.',
             style: theme.textTheme.bodyLarge?.copyWith(
               color: Colors.white.withValues(alpha: 0.84),
             ),
             textAlign: wide ? TextAlign.left : TextAlign.center,
           ),
           SizedBox(height: compact ? 24 : 30),
-          _HighlightCard(
-            icon: Icons.phone_rounded,
-            title: 'Phone is required',
-            subtitle: 'We use your phone number to connect you with drivers instantly.',
-          ),
-          const SizedBox(height: 12),
-          _HighlightCard(
-            icon: Icons.map_rounded,
-            title: 'Real queue map',
-            subtitle:
-                'Search pickup hubs, open queue details, and join quickly.',
-          ),
-          SizedBox(height: compact ? 18 : 24),
-          Container(
-            padding: EdgeInsets.all(compact ? 18 : 22),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(28),
-              gradient: const LinearGradient(
-                colors: [Color(0x33FFFFFF), Color(0x1AFFFFFF)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: _StatBadge(
-                    label: 'Live queues',
-                    value: '03',
-                    color: PassengerColors.orange,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _StatBadge(
-                    label: 'Search ready',
-                    value: 'On',
-                    color: PassengerColors.blue,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _StatBadge(
-                    label: 'Map sheet',
-                    value: 'Snap',
-                    color: PassengerColors.peach,
-                  ),
-                ),
-              ],
-            ),
-          ),
         ],
       ),
     );
@@ -281,6 +248,24 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ),
             SizedBox(height: compact ? 22 : 26),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FBFF),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: const Color(0xFFE6EDF5)),
+              ),
+              child: const Text(
+                'Quick access: 0913 269 909 / 123456',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: PassengerColors.ink,
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
             _FieldLabel(label: 'Phone number', trailing: 'Required'),
             const SizedBox(height: 8),
             TextFormField(
@@ -291,7 +276,6 @@ class _LoginScreenState extends State<LoginScreen> {
               decoration: const InputDecoration(
                 hintText: '0913 269 909',
                 prefixIcon: Icon(Icons.phone_rounded),
-                helperText: 'Used for driver contact inside Ethiopia',
               ),
             ),
             const SizedBox(height: 16),
@@ -300,15 +284,22 @@ class _LoginScreenState extends State<LoginScreen> {
             TextFormField(
               controller: _passwordController,
               obscureText: _obscurePassword,
-              textInputAction: _isLogin ? TextInputAction.done : TextInputAction.next,
+              textInputAction: _isLogin
+                  ? TextInputAction.done
+                  : TextInputAction.next,
               validator: _validatePassword,
               onFieldSubmitted: _isLogin ? (_) => _submit() : null,
               decoration: InputDecoration(
                 hintText: 'Enter your password',
                 prefixIcon: const Icon(Icons.lock_rounded),
                 suffixIcon: IconButton(
-                  icon: Icon(_obscurePassword ? Icons.visibility_rounded : Icons.visibility_off_rounded),
-                  onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                  icon: Icon(
+                    _obscurePassword
+                        ? Icons.visibility_rounded
+                        : Icons.visibility_off_rounded,
+                  ),
+                  onPressed: () =>
+                      setState(() => _obscurePassword = !_obscurePassword),
                 ),
               ),
             ),
@@ -326,8 +317,14 @@ class _LoginScreenState extends State<LoginScreen> {
                   hintText: 'Re-enter your password',
                   prefixIcon: const Icon(Icons.lock_rounded),
                   suffixIcon: IconButton(
-                    icon: Icon(_obscureConfirmPassword ? Icons.visibility_rounded : Icons.visibility_off_rounded),
-                    onPressed: () => setState(() => _obscureConfirmPassword = !_obscureConfirmPassword),
+                    icon: Icon(
+                      _obscureConfirmPassword
+                          ? Icons.visibility_rounded
+                          : Icons.visibility_off_rounded,
+                    ),
+                    onPressed: () => setState(
+                      () => _obscureConfirmPassword = !_obscureConfirmPassword,
+                    ),
                   ),
                 ),
               ),
@@ -336,12 +333,26 @@ class _LoginScreenState extends State<LoginScreen> {
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
-                onPressed: _submit,
-                icon: Icon(_isLogin ? Icons.login_rounded : Icons.person_add_rounded, size: 20),
+                onPressed: _isLoading ? null : _submit,
+                icon: _isLoading
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : Icon(
+                        _isLogin
+                            ? Icons.login_rounded
+                            : Icons.person_add_rounded,
+                        size: 20,
+                      ),
                 label: Text(_isLogin ? 'Login to app' : 'Create Account'),
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 20),
             Center(
               child: TextButton(
                 onPressed: () {
@@ -350,7 +361,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     _formKey.currentState?.reset();
                     if (_isLogin) {
                       _phoneController.text = '0913269909';
-                      _passwordController.text = '123';
+                      _passwordController.text = '123456';
                     } else {
                       _phoneController.clear();
                       _passwordController.clear();
@@ -359,8 +370,8 @@ class _LoginScreenState extends State<LoginScreen> {
                   });
                 },
                 child: Text(
-                  _isLogin 
-                      ? "Don't have an account? Sign up" 
+                  _isLogin
+                      ? "Don't have an account? Sign up"
                       : "Already have an account? Log in",
                 ),
               ),
@@ -551,7 +562,7 @@ class _StatBadge extends StatelessWidget {
           Text(
             value,
             style: TextStyle(
-               fontSize: 21,
+              fontSize: 21,
               fontWeight: FontWeight.w800,
               color: color,
             ),

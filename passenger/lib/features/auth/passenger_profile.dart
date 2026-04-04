@@ -3,11 +3,17 @@ class PassengerProfile {
     required this.fullName,
     required this.email,
     required this.phoneNumber,
+    this.token,
+    this.userId,
   });
 
   final String fullName;
   final String email;
   final String phoneNumber;
+  /// JWT from the backend — null if backend is unreachable.
+  final String? token;
+  /// Backend user ID — null if backend is unreachable.
+  final String? userId;
 
   String get initials {
     final parts = fullName
