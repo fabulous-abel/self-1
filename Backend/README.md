@@ -36,6 +36,15 @@ Deploy `Backend` as the Vercel project root. Vercel uses `src/app.js` as the Exp
 
 The HTTP API is Vercel-compatible. Socket.IO is only started in non-Vercel environments, because Vercel Functions are not meant to host long-lived WebSocket servers.
 
+Set these production environment variables in Vercel:
+
+- `API_PREFIX=/api`
+- `JWT_SECRET=<strong-secret>`
+- `MONGO_URI=<mongodb-connection-string>` if you want a persistent database
+- `CLIENT_URL=<your-admin-vercel-url>` to allow browser requests from the admin app
+
+If the frontend is also on Vercel, set `VITE_ENABLE_REALTIME=false` for the admin app so it relies on polling instead of trying to open a Socket.IO connection that will never be served by the backend deployment.
+
 ## Environment
 
 Use `.env.example` as the source of truth for required variables.

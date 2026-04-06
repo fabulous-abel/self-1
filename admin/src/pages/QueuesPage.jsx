@@ -5,6 +5,7 @@ import {
   getQueueDetails,
   adminRemovePassenger,
   ensureAdminToken,
+  createSocketConnection,
 } from '../services/backendApi'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -61,10 +62,8 @@ export default function QueuesPage() {
 
     // Socket.IO live update
     try {
-      // eslint-disable-next-line no-undef
-      const { io } = window.__adminSocketIo ?? (typeof io !== 'undefined' ? { io } : {})
-      if (io) {
-        const socket = io('http://localhost:5000', { transports: ['websocket'] })
+      const socket = createSocketConnection()
+      if (socket) {
         socketRef.current = socket
         socket.on('queue:updated', () => fetchQueues())
       }
