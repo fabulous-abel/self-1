@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { Search, X, RefreshCw, Users2, WifiOff } from 'lucide-react'
-import { listQueues, adminRemovePassenger, ensureAdminToken } from '../services/backendApi'
+import {
+  listQueues,
+  getQueueDetails,
+  adminRemovePassenger,
+  ensureAdminToken,
+  createSocketConnection,
+} from '../services/backendApi'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -38,9 +44,10 @@ export default function PassengersPage() {
       // Fetch detail for each queue in parallel to get entries
       const details = await Promise.allSettled(
         queues.map(q =>
-          fetch(`http://localhost:5000/api/queues/${q.id}`)
-            .then(r => r.json())
-            .then(d => ({ queue: q, entries: d.queue?.entries ?? [] }))
+          getQueueDetails(q.id).then(queueDetail => ({
+            queue: q,
+            entries: queueDetail?.entries ?? [],
+          }))
         )
       )
 
@@ -68,10 +75,8 @@ export default function PassengersPage() {
     const interval = setInterval(fetchAll, 8000)
 
     try {
-      // eslint-disable-next-line no-undef
-      const { io } = window.__adminSocketIo ?? (typeof io !== 'undefined' ? { io } : {})
-      if (io) {
-        const socket = io('http://localhost:5000', { transports: ['websocket'] })
+      const socket = createSocketConnection()
+      if (socket) {
         socketRef.current = socket
         socket.on('queue:updated', fetchAll)
       }

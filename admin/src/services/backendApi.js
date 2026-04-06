@@ -1,6 +1,37 @@
 import axios from 'axios'
 
-const API_BASE = 'http://localhost:5000/api'
+const DEFAULT_API_BASE = 'http://localhost:5000/api'
+const DEFAULT_SOCKET_URL = 'http://localhost:5000'
+
+function normalizeUrl(url) {
+  return url ? url.replace(/\/+$/, '') : ''
+}
+
+function getBooleanEnv(name, defaultValue) {
+  const value = import.meta.env[name]
+
+  if (value === undefined) return defaultValue
+
+  return ['1', 'true', 'yes', 'on'].includes(String(value).toLowerCase())
+}
+
+function getApiBase() {
+  return normalizeUrl(import.meta.env.VITE_API_BASE_URL) || DEFAULT_API_BASE
+}
+
+function getSocketUrl(apiBase) {
+  const configuredSocketUrl = normalizeUrl(import.meta.env.VITE_SOCKET_URL)
+  if (configuredSocketUrl) return configuredSocketUrl
+
+  // Fall back to the API origin when the API path ends with /api.
+  return apiBase.endsWith('/api')
+    ? apiBase.slice(0, -'/api'.length)
+    : DEFAULT_SOCKET_URL
+}
+
+const API_BASE = getApiBase()
+const SOCKET_URL = getSocketUrl(API_BASE)
+const REALTIME_ENABLED = getBooleanEnv('VITE_ENABLE_REALTIME', true)
 
 const api = axios.create({
   baseURL: API_BASE,
@@ -62,23 +93,18 @@ export async function ensureAdminToken() {
 
 // ---------- Socket.IO ----------
 
-let _socket = null
+function getSocketClient() {
+  if (typeof window === 'undefined') return null
 
-/** Connect to the backend Socket.IO server and return the socket instance. */
-export function getSocket() {
-  if (_socket && _socket.connected) return _socket
-
-  // Use the native browser WebSocket via the socket.io-client CDN approach.
-  // Since the admin is a Vite/React app the dependency is installed.
-  if (!_socket) {
-    // Dynamic import so this doesn't break SSR-like tooling
-    // eslint-disable-next-line no-undef
-    const { io } = window.__adminSocketIo ?? {}
-    if (io) {
-      _socket = io('http://localhost:5000', { transports: ['websocket'] })
-    }
-  }
-  return _socket
+  // Support either an injected client or a global window.io fallback.
+  return window.__adminSocketIo?.io ?? window.io ?? null
 }
 
-export { API_BASE }
+export function createSocketConnection() {
+  if (!REALTIME_ENABLED) return null
+
+  const io = getSocketClient()
+  return io ? io(SOCKET_URL, { transports: ['websocket'] }) : null
+}
+
+export { API_BASE, SOCKET_URL, REALTIME_ENABLED }
