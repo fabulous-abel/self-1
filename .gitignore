@@ -23,6 +23,7 @@ coverage/
 .flutter-plugins-dependencies
 .pub/
 .pub-cache/
+.gradle/
 
 # IDE / OS
 .idea/
