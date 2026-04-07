@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const express = require("express");
 
+const adminRouter = require("./admin");
 const authRouter = require("./auth");
 const driverRouter = require("./drivers");
 const paymentRouter = require("./payments");
@@ -42,6 +43,7 @@ router.get("/health", (req, res) => {
   });
 });
 
+router.use("/admin", adminRouter);
 router.use("/auth", authRouter);
 router.use("/drivers", driverRouter);
 router.use("/queues", queueRouter);

@@ -1,92 +1,66 @@
-import {
-  addDoc,
-  collection,
-  doc,
-  getDoc,
-  onSnapshot,
-  orderBy,
-  query,
-  serverTimestamp,
-  updateDoc,
-} from 'firebase/firestore'
-import { db } from './firebaseClient'
+import { api, createPollingSubscription, extractApiError } from '../services/backendApi'
 
-const broadcastsRef = collection(db, 'broadcast_messages')
+const subscribers = new Set()
 
-const safeString = (value) => String(value || '').trim()
-const serializeTimestamp = (value) => {
-  if (!value) return null
-  if (typeof value.toDate === 'function') return value.toDate().toISOString()
-  return value
-}
-
-function serializeBroadcast(docSnapshot) {
-  const data = docSnapshot.data() || {}
-  return {
-    id: docSnapshot.id,
-    target: safeString(data.target) || 'both',
-    message: safeString(data.message),
-    createdAt: serializeTimestamp(data.createdAt),
-    updatedAt: serializeTimestamp(data.updatedAt),
-    createdBy: safeString(data.createdBy),
-  }
+function notifySubscribers() {
+  subscribers.forEach((run) => run())
 }
 
 export function subscribeToBroadcastMessages(callbacks) {
-  return onSnapshot(
-    query(broadcastsRef, orderBy('createdAt', 'desc')),
-    (snapshot) => {
-      callbacks.onBroadcasts?.(snapshot.docs.map(serializeBroadcast))
-    },
-    (error) => callbacks.onError?.(error)
-  )
+  const load = async () => {
+    const { data } = await api.get('/admin/broadcasts')
+    return data.broadcasts ?? []
+  }
+
+  const run = async () => {
+    try {
+      const broadcasts = await load()
+      callbacks.onBroadcasts?.(broadcasts)
+    } catch (error) {
+      callbacks.onError?.(new Error(extractApiError(error, 'Unable to load broadcasts.')))
+    }
+  }
+
+  subscribers.add(run)
+
+  const unsubscribePolling = createPollingSubscription(load, {
+    onSuccess: (broadcasts) => callbacks.onBroadcasts?.(broadcasts),
+    onError: (error) =>
+      callbacks.onError?.(new Error(extractApiError(error, 'Unable to load broadcasts.'))),
+  })
+
+  return () => {
+    subscribers.delete(run)
+    unsubscribePolling()
+  }
 }
 
 export async function createBroadcastMessage({ message, target, createdBy }) {
-  const trimmed = safeString(message)
-  if (!trimmed) {
-    throw new Error('Broadcast message cannot be empty.')
-  }
+  try {
+    const { data } = await api.post('/admin/broadcasts', {
+      message,
+      target,
+      createdBy,
+    })
 
-  const created = await addDoc(broadcastsRef, {
-    message: trimmed,
-    target: safeString(target) || 'both',
-    createdBy: safeString(createdBy) || 'admin',
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  })
-
-  return {
-    id: created.id,
-    message: trimmed,
-    target: safeString(target) || 'both',
+    notifySubscribers()
+    return data.broadcast
+  } catch (error) {
+    throw new Error(extractApiError(error, 'Unable to save the broadcast.'))
   }
 }
 
 export async function updateBroadcastMessage(id, { message, target, updatedBy }) {
-  const trimmed = safeString(message)
-  if (!trimmed) {
-    throw new Error('Broadcast message cannot be empty.')
-  }
+  try {
+    const { data } = await api.put(`/admin/broadcasts/${id}`, {
+      message,
+      target,
+      updatedBy,
+    })
 
-  const broadcastRef = doc(db, 'broadcast_messages', id)
-  const snapshot = await getDoc(broadcastRef)
-
-  if (!snapshot.exists()) {
-    throw new Error('Broadcast record not found.')
-  }
-
-  await updateDoc(broadcastRef, {
-    message: trimmed,
-    target: safeString(target) || 'both',
-    updatedBy: safeString(updatedBy) || 'admin',
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  })
-
-  return {
-    id,
-    message: trimmed,
-    target: safeString(target) || 'both',
+    notifySubscribers()
+    return data.broadcast
+  } catch (error) {
+    throw new Error(extractApiError(error, 'Unable to update the broadcast.'))
   }
 }

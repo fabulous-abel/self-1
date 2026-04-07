@@ -33,12 +33,12 @@ export default function LoginPage() {
           </div>
           <div>
             <div style={styles.logoTitle}>LinkEt Admin</div>
-        <div style={styles.logoSub}>Local Auth + Live Dispatch</div>
+            <div style={styles.logoSub}>Local Auth + Backend Dispatch</div>
           </div>
         </div>
 
         <h2 style={styles.heading}>Sign in to your account</h2>
-        <p style={styles.sub}>Sign in still uses local browser storage. The new location dispatch tools sync live queue and driver data through Firebase.</p>
+        <p style={styles.sub}>Sign in still uses local browser storage. Queue, dispatch, user, and broadcast data now load through the backend API.</p>
         <div style={styles.infoBanner}>
           Default login: <b>{credentials.email}</b> / <b>{credentials.password}</b>
         </div>

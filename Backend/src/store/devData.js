@@ -16,6 +16,11 @@ const driversByUserId = new Map();
 const rides = new Map();
 const payments = new Map();
 const autoTurnTimers = new Map();
+const managedUsers = new Map();
+const managedUsersByPhone = new Map();
+const broadcasts = new Map();
+const dispatchLocations = new Map();
+const dispatchStateByLocation = new Map();
 
 const DEFAULT_DRIVER_EARNINGS = Object.freeze({
   currency: "ETB",
@@ -34,12 +39,28 @@ const DEFAULT_DRIVER_VEHICLE = Object.freeze({
     "https://lh3.googleusercontent.com/aida-public/AB6AXuC8PFqZUDNrieW7u_P1CKoTxJa_P4Yl2HPpe_40HavtxD0QmTppYtOgnBsb0kXeqzM__UXDXUjNHHPQQ5IfrsfciWlMW5jiPjwVldA0w2IzyKWkX9wHPx6tyk6UzX2RNkkvsuHwrAG9Pxu73LImQne0bm9GPTXB88c_nmjyWZNxdwH0N4kzCeoumXSQnrqrAQXTwt0tArDQT_B84PsHVCSWC9zi4iv3S28jORBtFyxI8OcailsHnCbzbUTrO6jeOnkQw-W6UngnyRU0",
 });
 
+const DEFAULT_DISPATCH_LOCATIONS = Object.freeze([
+  "Terminal A",
+  "Corporate Exit",
+  "Main Gate",
+]);
+
 function nowIso() {
   return new Date().toISOString();
 }
 
 function createId(prefix) {
   return `${prefix}_${crypto.randomBytes(6).toString("hex")}`;
+}
+
+function safeString(value) {
+  return String(value || "").trim();
+}
+
+function createStatusError(statusCode, message) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
 }
 
 function normalizePhone(phone) {
@@ -66,6 +87,32 @@ function normalizePhone(phone) {
 
 function phoneKey(role, phone) {
   return `${role}:${normalizePhone(phone)}`;
+}
+
+function getPhoneDigits(phone) {
+  return normalizePhone(phone).replace(/\D/g, "");
+}
+
+function buildManagedAuthEmail(role, phone) {
+  const digits = getPhoneDigits(phone);
+  if (!digits) {
+    return "";
+  }
+
+  return `${digits}@linket.${role}.auth`;
+}
+
+function normalizeLocationKey(value) {
+  return safeString(value).toLowerCase();
+}
+
+function getTimestampMs(value) {
+  if (!value) {
+    return 0;
+  }
+
+  const parsed = new Date(value).getTime();
+  return Number.isNaN(parsed) ? 0 : parsed;
 }
 
 function serializeLocation(location) {
@@ -272,6 +319,580 @@ function seedDrivers() {
 
 seedQueues();
 seedDrivers();
+
+function sortByNewest(items) {
+  return items
+    .slice()
+    .sort(
+      (left, right) =>
+        getTimestampMs(right.updatedAt || right.createdAt || right.timestamp) -
+        getTimestampMs(left.updatedAt || left.createdAt || left.timestamp),
+    );
+}
+
+function sortByName(items) {
+  return items
+    .slice()
+    .sort((left, right) => safeString(left.name).localeCompare(safeString(right.name)));
+}
+
+function serializeManagedUser(user) {
+  return {
+    id: user.id,
+    role: user.role,
+    fullName: user.fullName,
+    phoneNumber: user.phoneNumber,
+    email: user.email,
+    vehicleInfo: user.vehicleInfo || "",
+    source: user.source || "backend",
+    createdAt: user.createdAt || null,
+    updatedAt: user.updatedAt || null,
+  };
+}
+
+function createManagedUserRecord({
+  role,
+  fullName,
+  phoneNumber,
+  vehicleInfo,
+  source = "admin",
+}) {
+  const cleanRole = safeString(role).toLowerCase();
+  const cleanName = safeString(fullName);
+  const normalizedPhone = normalizePhone(phoneNumber);
+  const cleanVehicleInfo = safeString(vehicleInfo);
+
+  if (!["driver", "passenger"].includes(cleanRole)) {
+    throw createStatusError(400, "role must be driver or passenger");
+  }
+
+  if (!cleanName || !normalizedPhone) {
+    throw createStatusError(400, "Name and a valid Ethiopian phone number are required.");
+  }
+
+  if (cleanRole === "driver" && !cleanVehicleInfo) {
+    throw createStatusError(400, "Vehicle info is required for drivers.");
+  }
+
+  const duplicateKey = phoneKey(cleanRole, normalizedPhone);
+  if (managedUsersByPhone.has(duplicateKey)) {
+    throw createStatusError(400, "A user already exists for this phone number.");
+  }
+
+  const timestamp = nowIso();
+  const user = {
+    id: createId(`managed_${cleanRole}`),
+    role: cleanRole,
+    fullName: cleanName,
+    phoneNumber: normalizedPhone,
+    email: buildManagedAuthEmail(cleanRole, normalizedPhone),
+    vehicleInfo: cleanRole === "driver" ? cleanVehicleInfo : "",
+    source,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+
+  managedUsers.set(user.id, user);
+  managedUsersByPhone.set(duplicateKey, user.id);
+
+  return serializeManagedUser(user);
+}
+
+function listManagedUsers(role) {
+  const cleanRole = safeString(role).toLowerCase();
+
+  return sortByNewest(
+    Array.from(managedUsers.values())
+      .filter((user) => !cleanRole || user.role === cleanRole)
+      .map(serializeManagedUser),
+  );
+}
+
+function updateManagedUserRecord(userId, { fullName, phoneNumber, vehicleInfo }) {
+  const existingUser = managedUsers.get(String(userId)) || null;
+
+  if (!existingUser) {
+    throw createStatusError(404, "User record not found.");
+  }
+
+  const cleanName = safeString(fullName);
+  const normalizedPhone = normalizePhone(phoneNumber);
+  const cleanVehicleInfo = safeString(vehicleInfo);
+  const expectedEmail = buildManagedAuthEmail(existingUser.role, existingUser.phoneNumber);
+
+  if (!cleanName || !normalizedPhone) {
+    throw createStatusError(400, "Name and a valid Ethiopian phone number are required.");
+  }
+
+  if (normalizedPhone !== existingUser.phoneNumber) {
+    throw createStatusError(400, "Phone number changes are not supported from admin yet.");
+  }
+
+  if (existingUser.email !== expectedEmail) {
+    throw createStatusError(400, "Email changes are not supported from admin yet.");
+  }
+
+  if (existingUser.role === "driver" && !cleanVehicleInfo) {
+    throw createStatusError(400, "Vehicle info is required for drivers.");
+  }
+
+  existingUser.fullName = cleanName;
+  existingUser.vehicleInfo = existingUser.role === "driver" ? cleanVehicleInfo : "";
+  existingUser.updatedAt = nowIso();
+
+  return serializeManagedUser(existingUser);
+}
+
+function serializeBroadcast(broadcast) {
+  return {
+    id: broadcast.id,
+    target: broadcast.target,
+    message: broadcast.message,
+    createdAt: broadcast.createdAt || null,
+    updatedAt: broadcast.updatedAt || null,
+    createdBy: broadcast.createdBy || "",
+    updatedBy: broadcast.updatedBy || "",
+  };
+}
+
+function listBroadcasts() {
+  return sortByNewest(Array.from(broadcasts.values()).map(serializeBroadcast));
+}
+
+function createBroadcastRecord({ message, target, createdBy }) {
+  const trimmedMessage = safeString(message);
+  const cleanTarget = safeString(target) || "both";
+
+  if (!trimmedMessage) {
+    throw createStatusError(400, "Broadcast message cannot be empty.");
+  }
+
+  const timestamp = nowIso();
+  const broadcast = {
+    id: createId("broadcast"),
+    target: cleanTarget,
+    message: trimmedMessage,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    createdBy: safeString(createdBy) || "admin",
+    updatedBy: "",
+  };
+
+  broadcasts.set(broadcast.id, broadcast);
+  return serializeBroadcast(broadcast);
+}
+
+function updateBroadcastRecord(broadcastId, { message, target, updatedBy }) {
+  const broadcast = broadcasts.get(String(broadcastId)) || null;
+
+  if (!broadcast) {
+    throw createStatusError(404, "Broadcast record not found.");
+  }
+
+  const trimmedMessage = safeString(message);
+  if (!trimmedMessage) {
+    throw createStatusError(400, "Broadcast message cannot be empty.");
+  }
+
+  broadcast.message = trimmedMessage;
+  broadcast.target = safeString(target) || "both";
+  broadcast.updatedBy = safeString(updatedBy) || "admin";
+  broadcast.updatedAt = nowIso();
+
+  return serializeBroadcast(broadcast);
+}
+
+function serializeDispatchLocation(location) {
+  return {
+    id: location.id,
+    name: location.name,
+    createdAt: location.createdAt || null,
+    updatedAt: location.updatedAt || null,
+  };
+}
+
+function createEmptyDispatchState() {
+  return {
+    drivers: [],
+    waitingPassengers: [],
+    requests: [],
+    trips: [],
+  };
+}
+
+function createDispatchLocationRecord(name) {
+  const cleanName = safeString(name);
+
+  if (!cleanName) {
+    throw createStatusError(400, "Place name is required.");
+  }
+
+  const duplicate = Array.from(dispatchLocations.values()).find(
+    (location) => normalizeLocationKey(location.name) === normalizeLocationKey(cleanName),
+  );
+  if (duplicate) {
+    throw createStatusError(400, "A place with that name already exists.");
+  }
+
+  const timestamp = nowIso();
+  const location = {
+    id: createId("dispatch_location"),
+    name: cleanName,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+
+  dispatchLocations.set(location.id, location);
+  dispatchStateByLocation.set(location.name, createEmptyDispatchState());
+
+  return serializeDispatchLocation(location);
+}
+
+function findDispatchLocationById(locationId) {
+  return dispatchLocations.get(String(locationId)) || null;
+}
+
+function findDispatchLocationByName(locationName) {
+  const key = normalizeLocationKey(locationName);
+
+  return (
+    Array.from(dispatchLocations.values()).find(
+      (location) => normalizeLocationKey(location.name) === key,
+    ) || null
+  );
+}
+
+function ensureDispatchState(locationName) {
+  if (!dispatchStateByLocation.has(locationName)) {
+    dispatchStateByLocation.set(locationName, createEmptyDispatchState());
+  }
+
+  return dispatchStateByLocation.get(locationName);
+}
+
+function serializeDispatchDriver(driver) {
+  return {
+    id: driver.id,
+    driverPhone: driver.driverPhone,
+    driverName: driver.driverName,
+    vehicleInfo: driver.vehicleInfo,
+    status: driver.status || "waiting",
+    timestamp: driver.timestamp || null,
+  };
+}
+
+function serializeDispatchPassenger(passenger) {
+  return {
+    id: passenger.id,
+    customerName: passenger.customerName,
+    customerPhone: passenger.customerPhone,
+    note: passenger.note || "",
+    requestedBy: passenger.requestedBy || "",
+    createdAt: passenger.createdAt || null,
+    source: passenger.source || "admin_call",
+  };
+}
+
+function serializeDispatchRequest(request) {
+  return {
+    id: request.id,
+    location: request.location,
+    customerName: request.customerName,
+    customerPhone: request.customerPhone,
+    note: request.note || "",
+    status: request.status || "queued",
+    requestedBy: request.requestedBy || "",
+    createdAt: request.createdAt || null,
+    updatedAt: request.updatedAt || null,
+    matchedAt: request.matchedAt || null,
+    matchedDriverName: request.matchedDriverName || "",
+    matchedDriverPhone: request.matchedDriverPhone || "",
+  };
+}
+
+function serializeDispatchTrip(trip) {
+  return {
+    id: trip.id,
+    driverPhone: trip.driverPhone,
+    driverName: trip.driverName,
+    vehicleInfo: trip.vehicleInfo,
+    zone: trip.zone,
+    status: trip.status || "waiting",
+    capacity: Number(trip.capacity || 4),
+    passengers: Array.isArray(trip.passengers) ? [...trip.passengers] : [],
+    latestQueueRequest: trip.latestQueueRequest || null,
+    createdAt: trip.createdAt || null,
+    updatedAt: trip.updatedAt || null,
+  };
+}
+
+function listDispatchLocations() {
+  return sortByName(Array.from(dispatchLocations.values()).map(serializeDispatchLocation));
+}
+
+function getLocationDispatchState(locationName) {
+  const location = findDispatchLocationByName(locationName);
+
+  if (!location) {
+    throw createStatusError(404, "Place not found.");
+  }
+
+  const state = ensureDispatchState(location.name);
+
+  return {
+    drivers: sortByNewest(state.drivers.map(serializeDispatchDriver)),
+    waitingPassengers: sortByNewest(
+      state.waitingPassengers.map(serializeDispatchPassenger),
+    ),
+    requests: sortByNewest(state.requests.map(serializeDispatchRequest)),
+    trips: sortByNewest(state.trips.map(serializeDispatchTrip)),
+  };
+}
+
+function updateDispatchLocationRecord(locationId, locationName) {
+  const location = findDispatchLocationById(locationId);
+
+  if (!location) {
+    throw createStatusError(404, "Place not found.");
+  }
+
+  const cleanName = safeString(locationName);
+  if (!cleanName) {
+    throw createStatusError(400, "Place name is required.");
+  }
+
+  const duplicate = Array.from(dispatchLocations.values()).find(
+    (item) =>
+      item.id !== location.id &&
+      normalizeLocationKey(item.name) === normalizeLocationKey(cleanName),
+  );
+  if (duplicate) {
+    throw createStatusError(400, "A place with that name already exists.");
+  }
+
+  if (location.name !== cleanName) {
+    const state = ensureDispatchState(location.name);
+    dispatchStateByLocation.delete(location.name);
+
+    state.requests.forEach((request) => {
+      request.location = cleanName;
+      request.updatedAt = nowIso();
+    });
+
+    state.trips.forEach((trip) => {
+      trip.zone = cleanName;
+      trip.updatedAt = nowIso();
+    });
+
+    dispatchStateByLocation.set(cleanName, state);
+    location.name = cleanName;
+  }
+
+  location.updatedAt = nowIso();
+  return serializeDispatchLocation(location);
+}
+
+function deleteDispatchLocationRecord(locationId) {
+  const location = findDispatchLocationById(locationId);
+
+  if (!location) {
+    throw createStatusError(404, "Place not found.");
+  }
+
+  if (dispatchLocations.size <= 1) {
+    throw createStatusError(400, "Keep at least one place in the dispatch system.");
+  }
+
+  const state = ensureDispatchState(location.name);
+
+  if (state.drivers.length > 0) {
+    throw createStatusError(400, "Cannot delete a place while drivers are still queued there.");
+  }
+
+  if (state.waitingPassengers.length > 0) {
+    throw createStatusError(400, "Cannot delete a place while callers are still waiting there.");
+  }
+
+  if (state.trips.length > 0) {
+    throw createStatusError(400, "Cannot delete a place while it still has active driver trips.");
+  }
+
+  if (state.requests.some((request) => request.status === "queued")) {
+    throw createStatusError(
+      400,
+      "Cannot delete a place while phone requests are still queued for it.",
+    );
+  }
+
+  dispatchLocations.delete(location.id);
+  dispatchStateByLocation.delete(location.name);
+
+  return serializeDispatchLocation(location);
+}
+
+function createLocationQueueRequest({
+  location,
+  customerName,
+  customerPhone,
+  note,
+  requestedBy,
+}) {
+  const dispatchLocation = findDispatchLocationByName(location);
+  if (!dispatchLocation) {
+    throw createStatusError(404, "Place not found.");
+  }
+
+  const cleanName = safeString(customerName);
+  const normalizedPhone = normalizePhone(customerPhone);
+  const cleanNote = safeString(note);
+  const cleanRequestedBy = safeString(requestedBy) || "admin";
+
+  if (!cleanName || !normalizedPhone) {
+    throw createStatusError(
+      400,
+      "Location, customer name, and customer phone are required.",
+    );
+  }
+
+  const timestamp = nowIso();
+  const state = ensureDispatchState(dispatchLocation.name);
+  const request = {
+    id: createId("phone_request"),
+    location: dispatchLocation.name,
+    customerName: cleanName,
+    customerPhone: normalizedPhone,
+    note: cleanNote,
+    status: "queued",
+    requestedBy: cleanRequestedBy,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    matchedAt: null,
+    matchedDriverName: "",
+    matchedDriverPhone: "",
+  };
+
+  const availableTrip = state.trips.find(
+    (trip) =>
+      safeString(trip.status || "waiting") === "waiting" &&
+      Array.isArray(trip.passengers) &&
+      trip.passengers.length < Number(trip.capacity || 4),
+  );
+
+  if (availableTrip) {
+    const nextPassengers = availableTrip.passengers.includes(normalizedPhone)
+      ? [...availableTrip.passengers]
+      : [...availableTrip.passengers, normalizedPhone];
+
+    availableTrip.passengers = nextPassengers;
+    availableTrip.latestQueueRequest = {
+      customerName: cleanName,
+      customerPhone: normalizedPhone,
+      note: cleanNote,
+      source: "admin_call",
+      requestedAt: timestamp,
+    };
+    availableTrip.updatedAt = timestamp;
+
+    request.status = "matched";
+    request.matchedDriverName = availableTrip.driverName;
+    request.matchedDriverPhone = availableTrip.driverPhone;
+    request.matchedAt = timestamp;
+  } else {
+    state.waitingPassengers.unshift({
+      id: createId("waiting_passenger"),
+      customerName: cleanName,
+      customerPhone: normalizedPhone,
+      note: cleanNote,
+      requestedBy: cleanRequestedBy,
+      createdAt: timestamp,
+      source: "admin_call",
+    });
+  }
+
+  state.requests.unshift(request);
+
+  return {
+    requestId: request.id,
+    matched: request.status === "matched",
+    driverName: request.matchedDriverName,
+    driverPhone: request.matchedDriverPhone,
+    location: dispatchLocation.name,
+  };
+}
+
+function seedManagedUsers() {
+  createManagedUserRecord({
+    role: "driver",
+    fullName: "Dawit Alemu",
+    phoneNumber: "0912345678",
+    vehicleInfo: "Toyota Vitz - AA 67890",
+    source: "seed",
+  });
+
+  createManagedUserRecord({
+    role: "passenger",
+    fullName: "Mekdes Bekele",
+    phoneNumber: "0987654321",
+    source: "seed",
+  });
+}
+
+function seedDispatchState() {
+  DEFAULT_DISPATCH_LOCATIONS.forEach((locationName) => {
+    createDispatchLocationRecord(locationName);
+  });
+
+  const terminalState = ensureDispatchState("Terminal A");
+  const terminalTimestamp = new Date(Date.now() - (45 * 60 * 1000)).toISOString();
+  terminalState.drivers.push({
+    id: createId("dispatch_driver"),
+    driverPhone: "+251911000777",
+    driverName: "Meron T.",
+    vehicleInfo: "Toyota Vitz - AA 18264",
+    status: "waiting",
+    timestamp: terminalTimestamp,
+  });
+  terminalState.trips.push({
+    id: createId("dispatch_trip"),
+    driverPhone: "+251911000777",
+    driverName: "Meron T.",
+    vehicleInfo: "Toyota Vitz - AA 18264",
+    zone: "Terminal A",
+    status: "waiting",
+    capacity: 4,
+    passengers: [],
+    latestQueueRequest: null,
+    createdAt: terminalTimestamp,
+    updatedAt: terminalTimestamp,
+  });
+
+  const mainGateState = ensureDispatchState("Main Gate");
+  const mainGateTimestamp = new Date(Date.now() - (30 * 60 * 1000)).toISOString();
+  mainGateState.drivers.push({
+    id: createId("dispatch_driver"),
+    driverPhone: "+251911000778",
+    driverName: "Sami R.",
+    vehicleInfo: "Suzuki Dzire - AA 22110",
+    status: "waiting",
+    timestamp: mainGateTimestamp,
+  });
+  mainGateState.trips.push({
+    id: createId("dispatch_trip"),
+    driverPhone: "+251911000778",
+    driverName: "Sami R.",
+    vehicleInfo: "Suzuki Dzire - AA 22110",
+    zone: "Main Gate",
+    status: "waiting",
+    capacity: 4,
+    passengers: [],
+    latestQueueRequest: null,
+    createdAt: mainGateTimestamp,
+    updatedAt: mainGateTimestamp,
+  });
+}
+
+seedManagedUsers();
+seedDispatchState();
 
 function getDriverByUserId(userId) {
   const driverId = driversByUserId.get(String(userId));
@@ -901,24 +1522,36 @@ function getDriverEarnings(userId) {
 module.exports = {
   acceptNextPassenger,
   addPassengerToQueue,
+  createBroadcastRecord,
+  createDispatchLocationRecord,
+  createLocationQueueRequest,
+  createManagedUserRecord,
   createPayment,
   createRide,
+  deleteDispatchLocationRecord,
   findOrCreateDriver,
   findOrCreatePassenger,
   getDriverDashboard,
   getDriverEarnings,
   getDriverProfile,
+  getLocationDispatchState,
   getPassengerQueuePosition,
   getPayment,
   getQueue,
   getQueueDetails,
   getRide,
   getUserById,
+  listBroadcasts,
+  listDispatchLocations,
+  listManagedUsers,
   listQueues,
   normalizePhone,
   removePassengerFromQueue,
   setDriverAvailability,
+  updateBroadcastRecord,
+  updateDispatchLocationRecord,
   updateDriverRideStatus,
   updateDriverVehicle,
+  updateManagedUserRecord,
   uploadDriverDocument,
 };

@@ -75,8 +75,8 @@ export default function NotificationsPage() {
 
       setNotice(
         editingBroadcast
-          ? `Broadcast updated for ${formatAudience(item.target)} and synced to the apps.`
-          : `Broadcast published for ${formatAudience(item.target)} and synced to the apps.`
+          ? `Broadcast updated for ${formatAudience(item.target)} through the backend.`
+          : `Broadcast published for ${formatAudience(item.target)} through the backend.`
       )
       setIsComposerOpen(false)
       setEditingBroadcast(null)

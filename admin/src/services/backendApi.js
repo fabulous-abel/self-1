@@ -38,6 +38,38 @@ const api = axios.create({
   timeout: 10000,
 })
 
+function extractApiError(error, fallbackMessage = 'Request failed') {
+  return error?.response?.data?.message ?? error?.message ?? fallbackMessage
+}
+
+function createPollingSubscription(load, { onSuccess, onError, intervalMs = 8000 }) {
+  let active = true
+
+  const run = async () => {
+    try {
+      const data = await load()
+      if (active) onSuccess?.(data)
+    } catch (error) {
+      if (active) onError?.(error)
+    }
+  }
+
+  run()
+
+  if (typeof window === 'undefined') {
+    return () => {
+      active = false
+    }
+  }
+
+  const timer = window.setInterval(run, intervalMs)
+
+  return () => {
+    active = false
+    window.clearInterval(timer)
+  }
+}
+
 // ---------- Queues ----------
 
 /** GET /api/queues — returns list of queue summaries */
@@ -107,4 +139,4 @@ export function createSocketConnection() {
   return io ? io(SOCKET_URL, { transports: ['websocket'] }) : null
 }
 
-export { API_BASE, SOCKET_URL, REALTIME_ENABLED }
+export { API_BASE, SOCKET_URL, REALTIME_ENABLED, api, extractApiError, createPollingSubscription }
