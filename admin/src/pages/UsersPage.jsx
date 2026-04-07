@@ -24,7 +24,7 @@ export default function UsersPage() {
     setError('')
     return subscribeToManagedUsers(role, {
       onUsers: setUsers,
-      onError: (err) => setError(err?.message || 'Unable to sync users from Firebase.'),
+      onError: (err) => setError(err?.message || 'Unable to load users from the backend.'),
     })
   }, [role])
 
@@ -65,19 +65,19 @@ export default function UsersPage() {
       recordLocalActivity({
         kind: 'user',
         title: editingUser ? 'Managed user updated' : 'Managed user created',
-        detail: `${user.fullName} was ${editingUser ? 'updated in' : 'added to'} the Firebase ${role} directory.`,
+        detail: `${user.fullName} was ${editingUser ? 'updated in' : 'added to'} the backend ${role} directory.`,
       })
 
       setNotice(
         editingUser
-          ? `${role === 'driver' ? 'Driver' : 'Passenger'} "${user.fullName}" updated and synced.`
-          : `${role === 'driver' ? 'Driver' : 'Passenger'} "${user.fullName}" created in Firebase and ready for app login.`
+          ? `${role === 'driver' ? 'Driver' : 'Passenger'} "${user.fullName}" updated in the backend directory.`
+          : `${role === 'driver' ? 'Driver' : 'Passenger'} "${user.fullName}" created in the backend directory.`
       )
       setForm(EMPTY_FORM)
       setEditingUser(null)
       setIsCreateOpen(false)
     } catch (err) {
-      setError(err?.message || 'Unable to save the Firebase user record.')
+      setError(err?.message || 'Unable to save the backend user record.')
     } finally {
       setLoading(false)
     }
@@ -88,7 +88,7 @@ export default function UsersPage() {
       <div style={styles.headerRow}>
         <div>
           <h1 style={styles.title}>User Records</h1>
-          <p style={styles.sub}>Create Firebase-backed driver and passenger accounts, then review synced profile details in modal flows.</p>
+          <p style={styles.sub}>Create backend-managed driver and passenger records, then review the saved profile details in modal flows.</p>
         </div>
 
         <button type="button" onClick={openCreateModal} style={styles.primaryBtn}>
@@ -109,11 +109,11 @@ export default function UsersPage() {
           <h3 style={styles.cardTitle}>
             {tab === 'drivers' ? 'Drivers' : 'Passengers'} ({users.length})
           </h3>
-          <div style={styles.tableSub}>Each record here is synced from Firestore and uses the same phone-based login format as the apps.</div>
+          <div style={styles.tableSub}>Each record here comes from the backend user directory and keeps the same phone-based format used across the apps.</div>
         </div>
 
         {users.length === 0 ? (
-          <p style={styles.empty}>No synced {tab} yet.</p>
+          <p style={styles.empty}>No {tab} in the backend directory yet.</p>
         ) : (
           <div style={styles.tableWrap}>
             <table style={styles.table}>
@@ -157,7 +157,7 @@ export default function UsersPage() {
         open={isCreateOpen}
         onClose={closeCreateModal}
         title={`${editingUser ? 'Edit' : 'Create'} ${tab === 'drivers' ? 'Driver' : 'Passenger'} Record`}
-        subtitle={editingUser ? 'Update the synced profile fields for the selected Firebase user.' : 'Create a real Firebase Auth account that can sign into the app immediately.'}
+        subtitle={editingUser ? 'Update the saved profile fields for the selected backend user.' : 'Create a backend-managed user record for operational use in the admin tools.'}
         footer={(
           <div style={styles.modalFooter}>
             <button type="button" onClick={closeCreateModal} style={styles.secondaryBtn}>Cancel</button>
@@ -193,7 +193,7 @@ export default function UsersPage() {
             />
           ) : (
             <div style={styles.helperNote}>
-              Phone, auth email, and password changes are not supported from the admin app yet. You can update the synced profile fields here.
+              Phone, auth email, and password changes are not supported from the admin app yet. You can update the saved profile fields here.
             </div>
           )}
           {tab === 'drivers' ? (

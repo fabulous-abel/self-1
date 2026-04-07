@@ -50,7 +50,7 @@ export default function LocationsPage() {
         setLocations(items)
         setSyncError('')
       },
-      onError: (error) => setSyncError(error?.message || 'Unable to sync place list.'),
+      onError: (error) => setSyncError(error?.message || 'Unable to load place list.'),
     })
 
     return unsubscribe
@@ -86,7 +86,7 @@ export default function LocationsPage() {
       onWaitingPassengers: setWaitingPassengers,
       onRequests: setRequests,
       onTrips: setTrips,
-      onError: (error) => setSyncError(error?.message || 'Unable to sync live location queues.'),
+      onError: (error) => setSyncError(error?.message || 'Unable to load live location queues.'),
     })
 
     return unsubscribe
@@ -510,8 +510,8 @@ export default function LocationsPage() {
           </div>
 
           <div style={styles.tipCard}>
-            If a driver is already waiting in this location queue, this request updates that driver&apos;s `active_trips`
-            document immediately so the driver app can react to it.
+            If a driver is already waiting in this location queue, this request is matched through the backend dispatch
+            state immediately.
           </div>
 
           {requestError ? <div style={styles.errorBanner}>{requestError}</div> : null}

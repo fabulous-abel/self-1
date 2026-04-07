@@ -39,7 +39,7 @@ const DEFAULT_ACTIVITY = [
     id: 'activity-seed-1',
     kind: 'system',
     title: 'Admin dashboard ready',
-    detail: 'Live dispatch and broadcast sync are enabled for the admin dashboard.',
+    detail: 'Backend-backed dispatch and broadcast tools are enabled for the admin dashboard.',
     createdAt: new Date(Date.now() - 1000 * 60 * 60 * 12).toISOString(),
   },
   {
