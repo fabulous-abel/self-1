@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'firebase_options.dart';
 
@@ -9,6 +10,11 @@ import 'features/auth/login_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Hive.initFlutter();
+  try {
+    await dotenv.load(fileName: '.env');
+  } catch (e) {
+    debugPrint('Passenger dotenv not loaded: $e');
+  }
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
