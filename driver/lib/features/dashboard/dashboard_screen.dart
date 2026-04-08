@@ -438,7 +438,7 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
           ],
         ),
         const SizedBox(height: 16),
-        if (_isOnline && _entries.isNotEmpty && _ride.isEmpty)
+        if (_online && _entries.isNotEmpty && _ride.isEmpty)
           FilledButton(
             onPressed: _busy ? null : () { _acceptNext(); },
             child: const Text('Accept next passenger'),
