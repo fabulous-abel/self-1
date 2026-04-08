@@ -25,6 +25,7 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
   late final TextEditingController _vehicleController;
 
   bool _isLoading = false;
+  bool _isRestoringSession = false;
   final DriverLocalAuthService _authService = DriverLocalAuthService();
 
   @override
@@ -34,6 +35,7 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
     _passwordController = TextEditingController(text: '123456');
     _confirmPasswordController = TextEditingController();
     _vehicleController = TextEditingController();
+    Future<void>.microtask(_restoreExistingSession);
   }
 
   @override
@@ -66,15 +68,15 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
   }
 
   String? _validatePassword(String? value) {
-    if (value == null || value.isEmpty) return 'Enter your password';
-    if (!_isLogin && value.length < 6) return 'Use at least 6 characters';
+    if (value == null || value.isEmpty) return 'Enter your verification code';
+    if (value.trim().length != 6) return 'Use a 6-digit code';
     return null;
   }
 
   String? _validateConfirmPassword(String? value) {
     if (_isLogin) return null;
-    if (value == null || value.isEmpty) return 'Confirm your password';
-    if (value != _passwordController.text) return 'Passwords do not match';
+    if (value == null || value.isEmpty) return 'Confirm your verification code';
+    if (value != _passwordController.text) return 'Codes do not match';
     return null;
   }
 
@@ -118,6 +120,26 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
       );
     } finally {
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _restoreExistingSession() async {
+    if (!mounted) return;
+    setState(() => _isRestoringSession = true);
+
+    try {
+      final profile = await _authService.restoreSession();
+      if (!mounted || profile == null) return;
+
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute<void>(
+          builder: (_) => DriverDashboardScreen(profile: profile),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isRestoringSession = false);
+      }
     }
   }
 
@@ -169,8 +191,8 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
           const SizedBox(height: 12),
           Text(
             _isLogin
-                ? 'Login instantly with local driver access and go online right away.'
-                : 'Create a local driver account on this device and start earning from nearby queues.',
+                ? 'Login instantly with backend-backed driver access and go online right away.'
+                : 'Create a backend driver account and start earning from nearby queues.',
             style: theme.textTheme.bodyLarge?.copyWith(
               color: Colors.white.withValues(alpha: 0.84),
             ),
@@ -229,7 +251,7 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
                 border: Border.all(color: const Color(0xFFD7ECE9)),
               ),
               child: const Text(
-                'Quick access: use 0913269909 with password 123456.',
+                'Quick access: use 0913269909 with verification code 123456.',
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
@@ -252,7 +274,7 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            _FieldLabel(label: 'Password', trailing: 'Required'),
+            _FieldLabel(label: 'Verification code', trailing: 'Required'),
             const SizedBox(height: 8),
             TextFormField(
               controller: _passwordController,
@@ -261,9 +283,9 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
                   ? TextInputAction.done
                   : TextInputAction.next,
               validator: _validatePassword,
-              onFieldSubmitted: _isLogin ? (_) => _submit() : null,
+              onFieldSubmitted: _isLogin ? (_) { _submit(); } : null,
               decoration: InputDecoration(
-                hintText: 'Enter your password',
+                hintText: 'Enter 6-digit code',
                 prefixIcon: const Icon(Icons.lock_rounded),
                 suffixIcon: IconButton(
                   icon: Icon(
@@ -274,11 +296,12 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
                   onPressed: () =>
                       setState(() => _obscurePassword = !_obscurePassword),
                 ),
+                helperText: 'Use the OTP from the backend demo',
               ),
             ),
             if (!_isLogin) ...[
               const SizedBox(height: 16),
-              _FieldLabel(label: 'Confirm Password', trailing: 'Required'),
+              _FieldLabel(label: 'Confirm Code', trailing: 'Required'),
               const SizedBox(height: 8),
               TextFormField(
                 controller: _confirmPasswordController,
@@ -286,7 +309,7 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
                 textInputAction: TextInputAction.next,
                 validator: _validateConfirmPassword,
                 decoration: InputDecoration(
-                  hintText: 'Re-enter your password',
+                  hintText: 'Re-enter the code',
                   prefixIcon: const Icon(Icons.lock_rounded),
                   suffixIcon: IconButton(
                     icon: Icon(
@@ -301,14 +324,14 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              _FieldLabel(label: 'Vehicle Info', trailing: 'Optional'),
+              _FieldLabel(label: 'Vehicle note', trailing: 'Optional'),
               const SizedBox(height: 8),
               TextFormField(
                 controller: _vehicleController,
                 textInputAction: TextInputAction.done,
-                onFieldSubmitted: (_) => _submit(),
+                onFieldSubmitted: (_) { _submit(); },
                 decoration: const InputDecoration(
-                  hintText: 'Make, Model, License Plate',
+                  hintText: 'Optional vehicle details',
                   prefixIcon: Icon(Icons.directions_car_rounded),
                 ),
               ),
@@ -377,63 +400,76 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
 
     return Scaffold(
       backgroundColor: DriverColors.teal,
-      body: DecoratedBox(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [DriverColors.teal, DriverColors.tealDark],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ),
-        ),
-        child: SafeArea(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final compact =
-                  constraints.maxWidth < 390 || constraints.maxHeight < 760;
-              final wide = constraints.maxWidth >= 860;
-              final contentPadding = compact ? 20.0 : 24.0;
-              final panelRadius = compact ? 30.0 : 40.0;
-              final heroSection = _buildHeroSection(
-                theme: theme,
-                compact: compact,
-                wide: wide,
-                contentPadding: contentPadding,
-              );
-              final formPanel = _buildFormPanel(
-                theme: theme,
-                compact: compact,
-                contentPadding: contentPadding,
-                borderRadius: wide
-                    ? BorderRadius.circular(panelRadius)
-                    : BorderRadius.vertical(top: Radius.circular(panelRadius)),
-              );
+      body: Stack(
+        children: [
+          DecoratedBox(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [DriverColors.teal, DriverColors.tealDark],
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+              ),
+            ),
+            child: SafeArea(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final compact =
+                      constraints.maxWidth < 390 || constraints.maxHeight < 760;
+                  final wide = constraints.maxWidth >= 860;
+                  final contentPadding = compact ? 20.0 : 24.0;
+                  final panelRadius = compact ? 30.0 : 40.0;
+                  final heroSection = _buildHeroSection(
+                    theme: theme,
+                    compact: compact,
+                    wide: wide,
+                    contentPadding: contentPadding,
+                  );
+                  final formPanel = _buildFormPanel(
+                    theme: theme,
+                    compact: compact,
+                    contentPadding: contentPadding,
+                    borderRadius: wide
+                        ? BorderRadius.circular(panelRadius)
+                        : BorderRadius.vertical(top: Radius.circular(panelRadius)),
+                  );
 
-              return SingleChildScrollView(
-                keyboardDismissBehavior:
-                    ScrollViewKeyboardDismissBehavior.onDrag,
-                padding: EdgeInsets.only(bottom: viewInsets.bottom),
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(maxWidth: wide ? 1080 : 560),
-                    child: wide
-                        ? Padding(
-                            padding: const EdgeInsets.all(24),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: [
-                                Expanded(child: heroSection),
-                                const SizedBox(width: 24),
-                                Expanded(child: formPanel),
-                              ],
-                            ),
-                          )
-                        : Column(children: [heroSection, formPanel]),
-                  ),
-                ),
-              );
-            },
+                  return SingleChildScrollView(
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
+                    padding: EdgeInsets.only(bottom: viewInsets.bottom),
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(maxWidth: wide ? 1080 : 560),
+                        child: wide
+                            ? Padding(
+                                padding: const EdgeInsets.all(24),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.center,
+                                  children: [
+                                    Expanded(child: heroSection),
+                                    const SizedBox(width: 24),
+                                    Expanded(child: formPanel),
+                                  ],
+                                ),
+                              )
+                            : Column(children: [heroSection, formPanel]),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
           ),
-        ),
+          if (_isRestoringSession)
+            const Positioned.fill(
+              child: ColoredBox(
+                color: Color(0x33000000),
+                child: Center(
+                  child: CircularProgressIndicator(color: Colors.white),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

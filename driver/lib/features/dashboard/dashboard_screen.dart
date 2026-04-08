@@ -1,10 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 
-import '../../core/theme/app_theme.dart';
+import '../../core/services/backend_api_client.dart';
+import '../../core/services/local_auth_service.dart';
 import '../../core/services/trip_service.dart';
+import '../../core/theme/app_theme.dart';
+import '../auth/driver_login_screen.dart';
 import '../auth/driver_profile.dart';
 
 class DriverDashboardScreen extends StatefulWidget {
@@ -17,799 +19,545 @@ class DriverDashboardScreen extends StatefulWidget {
 }
 
 class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
-  static const _navLabels = ['Home', 'Queue', 'Earnings', 'Profile'];
-  static const _navIcons = [
-    Icons.home_rounded,
-    Icons.format_list_bulleted_rounded,
-    Icons.payments_rounded,
-    Icons.person_rounded,
-  ];
-  static const _fallbackZones = ['Terminal A', 'Corporate Exit', 'Main Gate'];
-
   final TripService _tripService = TripService();
-  bool _isOnline = false;
-  int _selectedTab = 0;
-  List<String> _zones = List<String>.from(_fallbackZones);
-  String _selectedZone = _fallbackZones.first;
-  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>?
-  _locationSubscription;
-  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>?
-  _broadcastSubscription;
-  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _tripSubscription;
-  int _queuedPassengers = 0;
-  String _tripStatus = 'offline';
-  String _latestRequestCopy = 'No active queue request yet';
-  String? _lastBroadcastVersion;
+  final DriverLocalAuthService _authService = DriverLocalAuthService();
+
+  late DriverProfile _profile;
+  Map<String, dynamic>? _dashboard;
+  Timer? _timer;
+  int _tab = 0;
+  bool _loading = true;
+  bool _refreshing = false;
+  bool _busy = false;
+  String? _error;
 
   @override
   void initState() {
     super.initState();
-    _listenToLocations();
-    _listenToBroadcasts();
+    _profile = widget.profile;
+    Future<void>.microtask(_bootstrap);
   }
 
   @override
   void dispose() {
-    _locationSubscription?.cancel();
-    _broadcastSubscription?.cancel();
-    _tripSubscription?.cancel();
+    _timer?.cancel();
     super.dispose();
   }
 
-  void _listenToLocations() {
-    _locationSubscription = FirebaseFirestore.instance
-        .collection('dispatch_locations')
-        .snapshots()
-        .listen((snapshot) {
-          final dynamicZones =
-              snapshot.docs
-                  .map((doc) => (doc.data()['name'] ?? '').toString().trim())
-                  .where((name) => name.isNotEmpty)
-                  .toSet()
-                  .toList()
-                ..sort();
-
-          final nextZones = dynamicZones.isEmpty
-              ? List<String>.from(_fallbackZones)
-              : dynamicZones;
-
-          if (!mounted) return;
-          setState(() {
-            _zones = nextZones;
-            if (!_isOnline && !_zones.contains(_selectedZone)) {
-              _selectedZone = _zones.first;
-            }
-          });
-        });
-  }
-
-  void _listenToBroadcasts() {
-    _broadcastSubscription = FirebaseFirestore.instance
-        .collection('broadcast_messages')
-        .orderBy('createdAt', descending: true)
-        .limit(1)
-        .snapshots()
-        .listen((snapshot) {
-          if (snapshot.docs.isEmpty) return;
-          final doc = snapshot.docs.first;
-          final data = doc.data();
-          final target = data['target'] as String?;
-
-          if (target == 'both' || target == 'drivers') {
-            final message = data['message'] as String?;
-            if (message != null && message.isNotEmpty) {
-              final version =
-                  '${doc.id}:${_broadcastVersionKey(data['updatedAt'] ?? data['createdAt'])}:$message';
-              if (_lastBroadcastVersion == version) return;
-
-              _lastBroadcastVersion = version;
-              _showBroadcast(message);
-            }
-          }
-        });
-  }
-
-  void _showBroadcast(String message) {
+  Future<void> _bootstrap() async {
+    await _loadDashboard(showLoading: true);
     if (!mounted) return;
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Row(
-          children: const [
-            Icon(Icons.campaign_rounded, color: DriverColors.teal),
-            SizedBox(width: 8),
-            Text(
-              'Admin Announcement',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-            ),
-          ],
-        ),
-        content: Text(message),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text(
-              'Dismiss',
-              style: TextStyle(color: DriverColors.teal),
-            ),
-          ),
-        ],
-      ),
+    _timer = Timer.periodic(const Duration(seconds: 8), (_) => _loadDashboard());
+  }
+
+  Map<String, dynamic> get _driver => _map(_dashboard?['driver']);
+  Map<String, dynamic> get _queue => _map(_dashboard?['queue']);
+  Map<String, dynamic> get _ride => _map(_dashboard?['activeRide']);
+  Map<String, dynamic> get _earnings => _map(_dashboard?['earnings']);
+  List<Map<String, dynamic>> get _entries => _list(_dashboard?['entries']);
+
+  bool get _online => _bool(_driver['isOnline']) || _text(_driver['status']) == 'online';
+
+  String get _queueName {
+    return _text(_profile.queueName) ?? _text(_queue['name']) ?? 'Assigned queue';
+  }
+
+  Future<void> _loadDashboard({bool showLoading = false}) async {
+    if (_refreshing || _busy) return;
+    if (!mounted) return;
+
+    setState(() {
+      _refreshing = true;
+      if (showLoading) _loading = true;
+    });
+
+    try {
+      final dashboard = await _tripService.refreshDashboard(token: _profile.token);
+      _applyDashboard(dashboard);
+    } on SessionExpiredException {
+      await _logout();
+    } on BackendApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = error.message;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'Unable to refresh the dashboard.';
+        _loading = false;
+      });
+    } finally {
+      if (mounted) setState(() => _refreshing = false);
+    }
+  }
+
+  void _applyDashboard(Map<String, dynamic> dashboard) {
+    final driver = _map(dashboard['driver']);
+    final queue = _map(driver['queue'] ?? dashboard['queue']);
+    final vehicle = _map(driver['vehicle']);
+    final vehicleInfo = _profile.vehicleInfo.isNotEmpty && _profile.vehicleInfo != 'Vehicle pending'
+        ? _profile.vehicleInfo
+        : _vehicleSummary(vehicle);
+
+    if (!mounted) return;
+    setState(() {
+      _profile = _profile.copyWith(
+        fullName: _text(driver['name']) ?? _profile.fullName,
+        phoneNumber: _text(driver['phone']) ?? _profile.phoneNumber,
+        vehicleInfo: vehicleInfo,
+        queueName: _text(queue['name']) ?? _profile.queueName,
+        status: _text(driver['status']) ?? _profile.status,
+        isOnline: _bool(driver['isOnline']) || _text(driver['status']) == 'online',
+        driverId: _text(driver['id']) ?? _profile.driverId,
+        userId: _text(driver['userId']) ?? _profile.userId,
+      );
+      _dashboard = dashboard;
+      _error = null;
+      _loading = false;
+    });
+  }
+
+  Future<void> _setOnline(bool value) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+
+    try {
+      final dashboard = await _tripService.setAvailability(token: _profile.token, online: value);
+      _applyDashboard(dashboard);
+    } on SessionExpiredException {
+      await _logout();
+    } on BackendApiException catch (error) {
+      if (mounted) _message(error.message);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _acceptNext() async {
+    if (_busy || !_online || _entries.isEmpty || _ride.isNotEmpty) return;
+    setState(() => _busy = true);
+
+    try {
+      final result = await _tripService.acceptNextPassenger(token: _profile.token);
+      final dashboard = _map(result['dashboard']);
+      if (dashboard.isNotEmpty) _applyDashboard(dashboard);
+      if (mounted) {
+        final ride = _map(result['ride']);
+        _message(
+          ride.isEmpty ? 'No passengers are waiting right now' : 'Accepted ${_text(ride['passengerName']) ?? 'next passenger'}',
+        );
+      }
+    } on SessionExpiredException {
+      await _logout();
+    } on BackendApiException catch (error) {
+      if (mounted) _message(error.message);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _updateRide(String status) async {
+    final rideId = _text(_ride['id']);
+    if (_busy || rideId == null || rideId.isEmpty) return;
+    setState(() => _busy = true);
+
+    try {
+      final result = await _tripService.updateRideStatus(
+        token: _profile.token,
+        rideId: rideId,
+        status: status,
+      );
+      final dashboard = _map(result['dashboard']);
+      if (dashboard.isNotEmpty) _applyDashboard(dashboard);
+      if (mounted) _message(status == 'arrived' ? 'Ride marked as arrived' : 'Ride completed');
+    } on SessionExpiredException {
+      await _logout();
+    } on BackendApiException catch (error) {
+      if (mounted) _message(error.message);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _logout() async {
+    _timer?.cancel();
+    await _authService.clearSession();
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute<void>(builder: (_) => const DriverLoginScreen()),
     );
   }
 
-  String _broadcastVersionKey(dynamic value) {
-    if (value is Timestamp) {
-      return value.millisecondsSinceEpoch.toString();
-    }
-
-    return value?.toString() ?? '0';
-  }
-
-  void _showMessage(String message) {
+  void _message(String message) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
-  Future<void> _handleOnlineToggle(bool value) async {
-    setState(() {
-      _isOnline = value;
-      if (value) {
-        _tripStatus = 'waiting';
-        _queuedPassengers = 0;
-        _latestRequestCopy = 'Waiting for passengers in $_selectedZone';
-      }
-    });
-
-    if (value) {
-      await _tripService.goOnline(widget.profile, _selectedZone);
-      _startTripListener();
-      return;
-    }
-
-    await _tripSubscription?.cancel();
-    _tripSubscription = null;
-    await _tripService.goOffline();
-
-    if (!mounted) return;
-    setState(() {
-      _tripStatus = 'offline';
-      _queuedPassengers = 0;
-      _latestRequestCopy = 'No active queue request yet';
-    });
+  Map<String, dynamic> _map(dynamic value) {
+    if (value is Map) return Map<String, dynamic>.from(value);
+    return <String, dynamic>{};
   }
 
-  void _startTripListener() {
-    _tripSubscription?.cancel();
-    final stream = _tripService.currentTripStream;
-    if (stream == null) return;
-
-    _tripSubscription = stream.listen((snapshot) {
-      if (!snapshot.exists) return;
-      final data = snapshot.data() ?? <String, dynamic>{};
-      final passengers = List<String>.from(data['passengers'] ?? const []);
-      final latestQueueRequest = data['latestQueueRequest'];
-      final latestRequestData = latestQueueRequest is Map<String, dynamic>
-          ? latestQueueRequest
-          : <String, dynamic>{};
-      final customerName = (latestRequestData['customerName'] ?? '')
-          .toString()
-          .trim();
-      final customerPhone = (latestRequestData['customerPhone'] ?? '')
-          .toString()
-          .trim();
-      final zone = (data['zone'] ?? _selectedZone).toString();
-      final nextCopy = passengers.isEmpty
-          ? 'Waiting for passengers in $zone'
-          : customerName.isNotEmpty
-          ? '$customerName${customerPhone.isNotEmpty ? ' - $customerPhone' : ''}'
-          : '${passengers.length} passenger${passengers.length == 1 ? '' : 's'} assigned';
-
-      if (passengers.length > _queuedPassengers && mounted) {
-        final callerLabel = customerName.isNotEmpty
-            ? customerName
-            : 'A customer';
-        _showMessage('$callerLabel wants a driver at $zone');
-      }
-
-      if (!mounted) return;
-      setState(() {
-        _queuedPassengers = passengers.length;
-        _tripStatus = (data['status'] ?? 'waiting').toString();
-        _latestRequestCopy = nextCopy;
-        _selectedZone = zone;
-      });
-    });
+  List<Map<String, dynamic>> _list(dynamic value) {
+    if (value is! List) return <Map<String, dynamic>>[];
+    return value.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
   }
 
-  Widget _buildHome(bool compact, bool wide) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _sectionHeader(),
-        const SizedBox(height: 24),
-        _statusCard(compact, wide),
-        const SizedBox(height: 20),
-        _queueCard(compact, wide),
-        const SizedBox(height: 24),
-        Row(
-          children: const [
-            Icon(Icons.location_on_rounded, color: DriverColors.teal),
-            SizedBox(width: 8),
-            Text(
-              'Pickup Zone',
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+  String? _text(dynamic value) {
+    final text = value?.toString().trim();
+    if (text == null || text.isEmpty) return null;
+    return text;
+  }
+
+  bool _bool(dynamic value) {
+    if (value is bool) return value;
+    if (value is String) return value.toLowerCase() == 'true';
+    return false;
+  }
+
+  int _int(dynamic value, {int fallback = 0}) {
+    if (value is num) return value.round();
+    return int.tryParse(value?.toString() ?? '') ?? fallback;
+  }
+
+  double _double(dynamic value, {double fallback = 0}) {
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '') ?? fallback;
+  }
+
+  String _titleCase(String value) {
+    return value
+        .replaceAll('_', ' ')
+        .split(RegExp(r'\s+'))
+        .where((p) => p.isNotEmpty)
+        .map((p) => p[0].toUpperCase() + p.substring(1))
+        .join(' ');
+  }
+
+  String _firstName(String value) {
+    final parts = value.trim().split(RegExp(r'\s+'));
+    return parts.isNotEmpty && parts.first.isNotEmpty ? parts.first : 'Driver';
+  }
+
+  String _vehicleSummary(Map<String, dynamic> vehicle) {
+    final parts = [
+      _text(vehicle['brand']),
+      _text(vehicle['model']),
+      _text(vehicle['plateNumber']),
+      _text(vehicle['color']),
+    ].whereType<String>().toList();
+    return parts.isEmpty ? 'Vehicle pending' : parts.join(' - ');
+  }
+
+  String _money(dynamic value) {
+    final amount = _double(value);
+    return 'ETB ${amount % 1 == 0 ? amount.toStringAsFixed(0) : amount.toStringAsFixed(2)}';
+  }
+
+  Widget _tile(String label, String value) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF5FBFB),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFD7ECE9)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: const TextStyle(color: DriverColors.muted, fontSize: 13)),
+          const SizedBox(height: 6),
+          Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+        ],
+      ),
+    );
+  }
+
+  Widget _statusCard() {
+    final subtitle = _ride.isNotEmpty
+        ? 'A ride is active'
+        : _entries.isNotEmpty
+            ? 'Passengers are waiting in $_queueName'
+            : 'No passengers are waiting right now';
+
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      child: Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(24),
+          gradient: _online
+              ? const LinearGradient(colors: [DriverColors.teal, Color(0xFF22877F)])
+              : const LinearGradient(colors: [Color(0xFF29415A), Color(0xFF364C67)]),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('STATUS', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 8),
+                  Text(_online ? 'You are online' : 'Go online', style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 6),
+                  Text(subtitle, style: const TextStyle(color: Colors.white70)),
+                ],
+              ),
+            ),
+            Switch.adaptive(
+              value: _online,
+              onChanged: _busy ? null : (value) { _setOnline(value); },
+              activeThumbColor: DriverColors.teal,
+              activeTrackColor: Colors.white70,
             ),
           ],
         ),
-        const SizedBox(height: 14),
-        Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          children: _zones.map((zone) {
-            final selected = zone == _selectedZone;
-            return FilterChip(
-              selected: selected,
-              label: Text(zone),
-              onSelected: (_) {
-                if (_isOnline) {
-                  _showMessage('Go offline before changing your pickup zone');
-                  return;
-                }
-
-                setState(() => _selectedZone = zone);
-              },
-            );
-          }).toList(),
-        ),
-        const SizedBox(height: 16),
-        AspectRatio(
-          aspectRatio: wide ? 2.2 : 1.3,
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(28),
-              gradient: const LinearGradient(
-                colors: [Color(0xFF9FD1CB), Color(0xFFF7FBFA)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x160B1736),
-                  blurRadius: 18,
-                  offset: Offset(0, 8),
-                ),
-              ],
-            ),
-            child: Stack(
-              children: [
-                const Positioned.fill(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          Color(0x330D8781),
-                          Color(0x000D8781),
-                          Color(0x440D8781),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                Positioned(
-                  left: 20,
-                  top: 18,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 10,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.9),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Text(
-                      _selectedZone,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: DriverColors.ink,
-                      ),
-                    ),
-                  ),
-                ),
-                const Align(
-                  alignment: Alignment.center,
-                  child: CircleAvatar(
-                    radius: 30,
-                    backgroundColor: Color(0xFFD6EFEE),
-                    child: CircleAvatar(
-                      radius: 10,
-                      backgroundColor: DriverColors.teal,
-                    ),
-                  ),
-                ),
-                Positioned(
-                  right: 16,
-                  bottom: 16,
-                  child: FilledButton(
-                    onPressed: () =>
-                        _showMessage('Centered map on $_selectedZone'),
-                    child: const Text('Center map'),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 28),
-        const Text(
-          'Next in Queue',
-          style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800),
-        ),
-        const SizedBox(height: 16),
-        _riderCard('1', 'Samuel Karanja', 'Terminal A - 4.9 rating', true),
-        const SizedBox(height: 14),
-        _riderCard(
-          '2',
-          'Elena Rodriguez',
-          'Corporate Exit - 4.8 rating',
-          false,
-        ),
-        const SizedBox(height: 14),
-        _riderCard('3', 'John D. Smith', 'Main Gate - 5.0 rating', false),
-      ],
-    );
-  }
-
-  Widget _buildQueueTab() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _sectionHeader(),
-        const SizedBox(height: 24),
-        const Text(
-          'Queue Overview',
-          style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800),
-        ),
-        const SizedBox(height: 14),
-        _summaryTile('Trip status', _tripStatus.replaceAll('_', ' ')),
-        const SizedBox(height: 12),
-        _summaryTile('Passengers assigned', '$_queuedPassengers'),
-        const SizedBox(height: 12),
-        _summaryTile('Active pickup zone', _selectedZone),
-      ],
-    );
-  }
-
-  Widget _buildEarningsTab() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _sectionHeader(),
-        const SizedBox(height: 24),
-        const Text(
-          'Earnings',
-          style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800),
-        ),
-        const SizedBox(height: 14),
-        _summaryTile('Today', 'ETB 1,840'),
-        const SizedBox(height: 12),
-        _summaryTile('This week', 'ETB 9,420'),
-        const SizedBox(height: 12),
-        _summaryTile('Completed rides', '18'),
-      ],
-    );
-  }
-
-  Widget _buildProfileTab() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _sectionHeader(),
-        const SizedBox(height: 24),
-        Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(28),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x160B1736),
-                blurRadius: 18,
-                offset: Offset(0, 8),
-              ),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                widget.profile.fullName,
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Vehicle: ${widget.profile.vehicleInfo}',
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 4),
-              const Text('Verified and ready for queue dispatch'),
-            ],
-          ),
-        ),
-        const SizedBox(height: 14),
-        _summaryTile('Support status', 'All checks passed'),
-        const SizedBox(height: 12),
-        _summaryTile('Driver rating', '4.96'),
-      ],
-    );
-  }
-
-  Widget _sectionHeader() {
-    return Row(
-      children: [
-        _headerButton(
-          Icons.menu_rounded,
-          () => _showMessage('Menu is not configured yet'),
-        ),
-        const SizedBox(width: 14),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Welcome, ${widget.profile.fullName.split(' ').first}',
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(height: 2),
-              const Text(
-                'Live queue management',
-                style: TextStyle(color: DriverColors.muted),
-              ),
-            ],
-          ),
-        ),
-        _headerButton(
-          Icons.notifications_rounded,
-          () => _showMessage(
-            _queuedPassengers > 0 ? _latestRequestCopy : 'No new driver alerts',
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _statusCard(bool compact, bool wide) {
-    final statusCopy = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'STATUS',
-          style: TextStyle(
-            color: DriverColors.teal,
-            fontSize: 15,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 1.6,
-          ),
-        ),
-        const SizedBox(height: 12),
-        Text(
-          _isOnline ? 'You are online' : 'Go Online',
-          style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          _isOnline
-              ? _queuedPassengers > 0
-                    ? 'A customer is waiting for pickup'
-                    : 'You are live and receiving requests'
-              : 'Currently receiving no requests',
-          style: const TextStyle(color: DriverColors.muted),
-        ),
-      ],
-    );
-
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: const Color(0xFFC7E2DF)),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x160B1736),
-            blurRadius: 18,
-            offset: Offset(0, 8),
-          ),
-        ],
       ),
-      child: wide
-          ? Row(
-              children: [
-                Expanded(child: statusCopy),
-                const SizedBox(width: 20),
-                Switch.adaptive(
-                  value: _isOnline,
-                  onChanged: _handleOnlineToggle,
-                  activeThumbColor: DriverColors.teal,
-                  activeTrackColor: DriverColors.tealSoft,
-                ),
-              ],
-            )
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                statusCopy,
-                const SizedBox(height: 18),
-                Switch.adaptive(
-                  value: _isOnline,
-                  onChanged: _handleOnlineToggle,
-                  activeThumbColor: DriverColors.teal,
-                  activeTrackColor: DriverColors.tealSoft,
-                ),
-              ],
-            ),
     );
   }
 
-  Widget _queueCard(bool compact, bool wide) {
-    if (!_isOnline) {
-      return _buildStaticQueueCard(
-        compact,
-        wide,
-        'Offline',
-        '0/4 seats filled',
-        null,
+  Widget _rideCard() {
+    if (_ride.isEmpty) {
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Text(_online ? 'No active ride. Accept the next passenger when ready.' : 'Go online to start receiving rides.'),
+        ),
       );
     }
 
-    if (_tripStatus == 'moving') {
-      return _buildStaticQueueCard(
-        compact,
-        wide,
-        'Ride in progress',
-        _latestRequestCopy,
-        () async {
-          await _tripService.arrive();
-          _showMessage('Ride marked as arrived');
-        },
-        actionLabel: 'Mark arrived',
-      );
-    }
+    final status = _text(_ride['status']) ?? 'accepted';
+    final actionStatus = status == 'arrived' ? 'completed' : 'arrived';
+    final actionLabel = status == 'arrived' ? 'Complete ride' : 'Mark arrived';
 
-    if (_queuedPassengers > 0) {
-      return _buildStaticQueueCard(
-        compact,
-        wide,
-        '$_queuedPassengers passenger${_queuedPassengers == 1 ? '' : 's'} waiting',
-        _latestRequestCopy,
-        _tripStatus == 'waiting'
-            ? () async {
-                await _tripService.startRide();
-                _showMessage('Ride started for $_latestRequestCopy');
-              }
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Expanded(child: Text('Active ride', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800))),
+                Chip(label: Text(_titleCase(status))),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(_text(_ride['passengerName']) ?? 'Passenger', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+            Text(_text(_ride['pickupLabel']) ?? 'Pickup pending', style: const TextStyle(color: DriverColors.muted)),
+            Text(_text(_ride['destinationLabel']) ?? 'Destination pending', style: const TextStyle(color: DriverColors.muted)),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                _tile('Fare', _money(_ride['fareEtb'])),
+                _tile('Passengers', '${_int(_ride['passengers'], fallback: 1)}'),
+                _tile('Vehicle', _text(_ride['vehiclePlate']) ?? 'Pending'),
+              ],
+            ),
+            const SizedBox(height: 12),
+            FilledButton(
+              onPressed: _busy ? null : () { _updateRide(actionStatus); },
+              child: Text(actionLabel),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _entryCard(Map<String, dynamic> entry, {required bool highlight}) {
+    return Card(
+      color: highlight ? const Color(0xFFF5FBFB) : null,
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: const Color(0xFFEAF5F4),
+          child: Text('${_int(entry['position'])}', style: const TextStyle(color: DriverColors.teal, fontWeight: FontWeight.w800)),
+        ),
+        title: Text(_text(entry['passengerName']) ?? 'Passenger'),
+        subtitle: Text('${_text(entry['pickupLabel']) ?? 'Pickup pending'}\n${_text(entry['destinationLabel']) ?? 'Destination pending'}'),
+        isThreeLine: true,
+        trailing: highlight && _online && _ride.isEmpty
+            ? TextButton(
+                onPressed: _busy ? null : () { _acceptNext(); },
+                child: const Text('Accept'),
+              )
             : null,
-        actionLabel: 'Start ride',
-      );
-    }
-
-    return _buildStaticQueueCard(
-      compact,
-      wide,
-      'Waiting for passengers...',
-      'Zone $_selectedZone is live for queue calls and app requests',
-      null,
+      ),
     );
   }
 
-  Widget _buildStaticQueueCard(
-    bool compact,
-    bool wide,
-    String title,
-    String subtitle,
-    VoidCallback? onAction, {
-    String actionLabel = 'Refresh',
-  }) {
-    final queueCopy = Column(
+  Widget _homeTab() {
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Active Trip State',
-          style: TextStyle(color: Colors.white70, fontSize: 16),
+        _statusCard(),
+        const SizedBox(height: 16),
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            _tile('Queue', _queueName),
+            _tile('Waiting', '${_entries.length}'),
+            _tile('Completed today', '${_int(_dashboard?['completedToday'])}'),
+          ],
         ),
-        const SizedBox(height: 12),
-        Text(
-          title,
-          style: TextStyle(
-            fontSize: compact ? 38 : 50,
-            fontWeight: FontWeight.w800,
-            color: Colors.white,
-          ),
-        ),
-        const SizedBox(height: 18),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.14),
-            borderRadius: BorderRadius.circular(999),
-          ),
-          child: Text(subtitle, style: const TextStyle(color: Colors.white)),
-        ),
+        const SizedBox(height: 16),
+        _rideCard(),
+        const SizedBox(height: 16),
+        const Text('Next in queue', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 10),
+        if (_entries.isEmpty)
+          const Text('No riders are waiting right now.')
+        else
+          ..._entries.asMap().entries.map((entry) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _entryCard(entry.value, highlight: entry.key == 0),
+              )),
       ],
-    );
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(22),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(28),
-        gradient: const LinearGradient(
-          colors: [DriverColors.teal, Color(0xFF22877F)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x220D8781),
-            blurRadius: 20,
-            offset: Offset(0, 8),
-          ),
-        ],
-      ),
-      child: wide
-          ? Row(
-              children: [
-                Expanded(child: queueCopy),
-                if (onAction != null) ...[
-                  const SizedBox(width: 18),
-                  FilledButton(
-                    onPressed: onAction,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: DriverColors.teal,
-                    ),
-                    child: Text(actionLabel),
-                  ),
-                ],
-              ],
-            )
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                queueCopy,
-                if (onAction != null) ...[
-                  const SizedBox(height: 18),
-                  FilledButton(
-                    onPressed: onAction,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: DriverColors.teal,
-                    ),
-                    child: Text(actionLabel),
-                  ),
-                ],
-              ],
-            ),
     );
   }
 
-  Widget _riderCard(
-    String position,
-    String name,
-    String location,
-    bool priority,
-  ) {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(28),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x160B1736),
-            blurRadius: 18,
-            offset: Offset(0, 8),
+  Widget _queueTab() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            _tile('Queue', _queueName),
+            _tile('Average wait', '${_int(_queue['averageWaitMinutes'])} min'),
+            _tile('Status', _titleCase(_text(_driver['status']) ?? 'offline')),
+            _tile('Capacity', '${_int(_queue['capacity'])}'),
+          ],
+        ),
+        const SizedBox(height: 16),
+        if (_isOnline && _entries.isNotEmpty && _ride.isEmpty)
+          FilledButton(
+            onPressed: _busy ? null : () { _acceptNext(); },
+            child: const Text('Accept next passenger'),
           ),
-        ],
-      ),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 30,
-            backgroundColor: const Color(0xFFF1F5FA),
-            child: Text(
-              position,
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-                color: DriverColors.teal,
-              ),
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
+        const SizedBox(height: 12),
+        ..._entries.asMap().entries.map((entry) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _entryCard(entry.value, highlight: entry.key == 0),
+            )),
+      ],
+    );
+  }
+
+  Widget _earningsTab() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(18),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  name,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
+                const Text('Today', style: TextStyle(color: DriverColors.muted)),
                 const SizedBox(height: 6),
-                Text(
-                  location,
-                  style: const TextStyle(color: DriverColors.muted),
-                ),
+                Text(_money(_earnings['today']), style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800)),
+                const SizedBox(height: 4),
+                const Text('Backend revenue snapshot'),
               ],
             ),
           ),
-          const SizedBox(width: 12),
-          FilledButton(
-            onPressed: () => _showMessage('Assigned $name'),
-            style: FilledButton.styleFrom(
-              backgroundColor: priority
-                  ? DriverColors.teal
-                  : const Color(0xFFE9F3F2),
-              foregroundColor: priority ? Colors.white : DriverColors.teal,
-            ),
-            child: Text(priority ? 'Priority' : 'Assign'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _summaryTile(String label, String value) {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x160B1736),
-            blurRadius: 18,
-            offset: Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              label,
-              style: const TextStyle(color: DriverColors.muted),
-            ),
-          ),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.w800)),
-        ],
-      ),
-    );
-  }
-
-  Widget _headerButton(IconData icon, VoidCallback onTap) {
-    return Material(
-      color: DriverColors.tealSoft,
-      borderRadius: BorderRadius.circular(18),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
-        child: SizedBox(
-          height: 52,
-          width: 52,
-          child: Icon(icon, color: DriverColors.teal, size: 28),
         ),
+        const SizedBox(height: 16),
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            _tile('Today', _money(_earnings['today'])),
+            _tile('Week', _money(_earnings['week'])),
+            _tile('Month', _money(_earnings['month'])),
+            _tile('Total', _money(_earnings['total'])),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _profileTab() {
+    final vehicle = _map(_driver['vehicle']);
+    final documents = _map(_driver['documents']);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(_profile.fullName, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
+                const SizedBox(height: 4),
+                Text(_profile.phoneNumber, style: const TextStyle(color: DriverColors.muted)),
+                const SizedBox(height: 12),
+                _tile('Queue', _queueName),
+                const SizedBox(height: 10),
+                _tile('Vehicle', _profile.vehicleInfo.isNotEmpty ? _profile.vehicleInfo : _vehicleSummary(vehicle)),
+                const SizedBox(height: 10),
+                _tile('Documents', _text(documents['lastUploadedDocumentType']) ?? 'None uploaded'),
+                const SizedBox(height: 10),
+                _tile('Driver ID', _profile.driverId.isNotEmpty ? _profile.driverId : _text(_driver['id']) ?? 'Pending'),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        FilledButton.tonalIcon(
+          onPressed: () { _logout(); },
+          icon: const Icon(Icons.logout_rounded),
+          label: const Text('Log out'),
+        ),
+      ],
+    );
+  }
+
+  Widget _loadingView() {
+    return const Center(child: CircularProgressIndicator());
+  }
+
+  Widget _body() {
+    if (_loading && _dashboard == null) return _loadingView();
+
+    return RefreshIndicator(
+      onRefresh: () => _loadDashboard(),
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
+        child: switch (_tab) {
+          1 => _queueTab(),
+          2 => _earningsTab(),
+          3 => _profileTab(),
+          _ => _homeTab(),
+        },
       ),
+    );
+  }
+
+  Widget _bottomNav() {
+    return BottomNavigationBar(
+      currentIndex: _tab,
+      onTap: (index) => setState(() => _tab = index),
+      type: BottomNavigationBarType.fixed,
+      selectedItemColor: DriverColors.teal,
+      unselectedItemColor: const Color(0xFF97A6BE),
+      items: const [
+        BottomNavigationBarItem(icon: Icon(Icons.home_rounded), label: 'Home'),
+        BottomNavigationBarItem(icon: Icon(Icons.format_list_bulleted_rounded), label: 'Queue'),
+        BottomNavigationBarItem(icon: Icon(Icons.payments_rounded), label: 'Earnings'),
+        BottomNavigationBarItem(icon: Icon(Icons.person_rounded), label: 'Profile'),
+      ],
     );
   }
 
@@ -817,74 +565,24 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: DriverColors.softBackground,
-      body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final compact = constraints.maxWidth < 390;
-            final wide = constraints.maxWidth >= 760;
-            final body = switch (_selectedTab) {
-              1 => _buildQueueTab(),
-              2 => _buildEarningsTab(),
-              3 => _buildProfileTab(),
-              _ => _buildHome(compact, wide),
-            };
-            return SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(16, 18, 16, 120),
-              child: body,
-            );
-          },
-        ),
-      ),
-      bottomNavigationBar: SafeArea(
-        top: false,
-        child: Container(
-          height: 88,
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            border: Border(top: BorderSide(color: DriverColors.line)),
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        foregroundColor: DriverColors.ink,
+        elevation: 0,
+        title: Text('Welcome, ${_firstName(_profile.fullName)}'),
+        actions: [
+          IconButton(
+            onPressed: _refreshing ? null : () { _loadDashboard(); },
+            icon: const Icon(Icons.refresh_rounded),
           ),
-          child: Row(
-            children: List.generate(
-              _navLabels.length,
-              (index) => Expanded(
-                child: InkWell(
-                  onTap: () => setState(() => _selectedTab = index),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        _navIcons[index],
-                        color: _selectedTab == index
-                            ? DriverColors.teal
-                            : const Color(0xFF97A6BE),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        _navLabels[index],
-                        style: TextStyle(
-                          color: _selectedTab == index
-                              ? DriverColors.teal
-                              : const Color(0xFF97A6BE),
-                          fontWeight: _selectedTab == index
-                              ? FontWeight.w700
-                              : FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
+          IconButton(
+            onPressed: () { _logout(); },
+            icon: const Icon(Icons.logout_rounded),
           ),
-        ),
+        ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _showMessage('Quick actions will be connected next'),
-        backgroundColor: DriverColors.teal,
-        foregroundColor: Colors.white,
-        child: const Icon(Icons.add_rounded),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+      body: _body(),
+      bottomNavigationBar: _bottomNav(),
     );
   }
 }

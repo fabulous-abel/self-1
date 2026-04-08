@@ -1,147 +1,94 @@
-import 'dart:async';
-
-import 'package:flutter/foundation.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:audioplayers/audioplayers.dart';
-import 'package:flutter/services.dart';
-import '../../features/auth/driver_profile.dart';
+import 'backend_api_client.dart';
 
 class TripService {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final AudioPlayer _audioPlayer = AudioPlayer();
+  TripService({BackendApiClient? client})
+      : _client = client ?? BackendApiClient();
 
-  String? _currentZone;
-  String? _currentTripId;
-  String? _driverPhone;
+  final BackendApiClient _client;
 
-  int _passengerCount = 0;
-  final int _maxCapacity = 4;
-  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _tripSubscription;
-
-  // Stream of the current trip document
-  Stream<DocumentSnapshot<Map<String, dynamic>>>? get currentTripStream {
-    if (_currentTripId == null) return null;
-    return _firestore
-        .collection('active_trips')
-        .doc(_currentTripId)
-        .snapshots();
+  Future<Map<String, dynamic>> refreshDashboard({
+    required String token,
+  }) {
+    return _client.get('/drivers/me/dashboard', token: token);
   }
 
-  Future<void> goOnline(DriverProfile profile, String zone) async {
-    await _tripSubscription?.cancel();
-    _driverPhone = profile.phoneNumber;
-    _currentZone = zone;
-
-    // 1. Add driver to the zone's driver_queue
-    await _firestore
-        .collection('pickup_regions')
-        .doc(zone)
-        .collection('driver_queue')
-        .doc(profile.phoneNumber)
-        .set({
-          'driverName': profile.fullName,
-          'vehicleInfo': profile.vehicleInfo,
-          'timestamp': FieldValue.serverTimestamp(),
-          'status': 'waiting',
-        });
-
-    // 2. Create an active_trip document for this driver
-    final tripRef = _firestore
-        .collection('active_trips')
-        .doc(profile.phoneNumber);
-    _currentTripId = profile.phoneNumber;
-
-    await tripRef.set({
-      'driverPhone': profile.phoneNumber,
-      'driverName': profile.fullName,
-      'vehicleInfo': profile.vehicleInfo,
-      'zone': zone,
-      'status': 'waiting',
-      'passengers': [],
-      'capacity': _maxCapacity,
-      'createdAt': FieldValue.serverTimestamp(),
-    });
-
-    // 3. Listen for changes to play sound on new passenger
-    _listenForPassengers();
+  Future<Map<String, dynamic>> setAvailability({
+    required String token,
+    required bool online,
+  }) {
+    return _client.patch(
+      '/drivers/me/status',
+      token: token,
+      data: <String, dynamic>{
+        'online': online,
+      },
+    );
   }
 
-  Future<void> goOffline() async {
-    await _tripSubscription?.cancel();
-    _tripSubscription = null;
-
-    if (_currentZone != null && _driverPhone != null) {
-      await _firestore
-          .collection('pickup_regions')
-          .doc(_currentZone)
-          .collection('driver_queue')
-          .doc(_driverPhone)
-          .delete();
-
-      if (_currentTripId != null) {
-        await _firestore
-            .collection('active_trips')
-            .doc(_currentTripId)
-            .delete();
-      }
-    }
-    _currentZone = null;
-    _currentTripId = null;
-    _passengerCount = 0;
+  Future<Map<String, dynamic>> acceptNextPassenger({
+    required String token,
+  }) {
+    return _client.post(
+      '/drivers/me/queue/accept-next',
+      token: token,
+    );
   }
 
-  void _listenForPassengers() {
-    if (_currentTripId == null) return;
-
-    _tripSubscription = _firestore
-        .collection('active_trips')
-        .doc(_currentTripId)
-        .snapshots()
-        .listen((snapshot) {
-          if (!snapshot.exists) return;
-          final data = snapshot.data()!;
-
-          final passengers = List<String>.from(data['passengers'] ?? []);
-          final currentStatus = data['status'] as String;
-
-          if (passengers.length > _passengerCount) {
-            _playSound();
-
-            // Auto-update to seats_full if hit capacity
-            if (passengers.length >= _maxCapacity &&
-                currentStatus == 'waiting') {
-              _firestore.collection('active_trips').doc(_currentTripId).update({
-                'status': 'seats_full',
-              });
-            }
-          }
-
-          _passengerCount = passengers.length;
-        });
+  Future<Map<String, dynamic>> updateRideStatus({
+    required String token,
+    required String rideId,
+    required String status,
+  }) {
+    return _client.patch(
+      '/drivers/me/rides/$rideId/status',
+      token: token,
+      data: <String, dynamic>{
+        'status': status,
+      },
+    );
   }
 
-  Future<void> _playSound() async {
-    try {
-      await SystemSound.play(SystemSoundType.alert);
-      await _audioPlayer.play(AssetSource('notification.mp3'));
-    } catch (e) {
-      debugPrint(
-        'Error playing driver alert sound, system alert was attempted first: $e',
-      );
-    }
+  Future<Map<String, dynamic>> updateVehicle({
+    required String token,
+    required String brand,
+    required String model,
+    required String licensePlate,
+    required String color,
+  }) {
+    return _client.patch(
+      '/drivers/me/vehicle',
+      token: token,
+      data: <String, dynamic>{
+        'brand': brand,
+        'model': model,
+        'licensePlate': licensePlate,
+        'color': color,
+      },
+    );
   }
 
-  Future<void> startRide() async {
-    if (_currentTripId == null) return;
-    await _firestore.collection('active_trips').doc(_currentTripId).update({
-      'status': 'moving',
-    });
+  Future<Map<String, dynamic>> uploadDocument({
+    required String token,
+    required String documentType,
+  }) {
+    return _client.post(
+      '/drivers/me/documents',
+      token: token,
+      data: <String, dynamic>{
+        'documentType': documentType,
+      },
+    );
   }
 
-  Future<void> arrive() async {
-    if (_currentTripId == null) return;
-    await _firestore.collection('active_trips').doc(_currentTripId).update({
-      'status': 'arrived',
-    });
+  Future<Map<String, dynamic>> fetchProfile({
+    required String token,
+  }) {
+    return _client.get('/drivers/me', token: token);
+  }
+
+  Future<Map<String, dynamic>> fetchEarnings({
+    required String token,
+  }) {
+    return _client.get('/drivers/me/earnings', token: token);
   }
 }
