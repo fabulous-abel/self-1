@@ -86,6 +86,30 @@ class QueueApiService {
     }
   }
 
+  Future<PositionUpdate?> getQueuePosition(String queueId, String token) async {
+    try {
+      final res = await _dio.get(
+        '/queues/$queueId/position',
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
+      );
+      final data = Map<String, dynamic>.from(res.data as Map);
+      final queue = Map<String, dynamic>.from((data['queue'] as Map?) ?? const {});
+      return PositionUpdate(
+        position: (data['position'] as num?)?.toInt() ?? 0,
+        estimatedWaitMinutes:
+            (data['estimatedWaitMinutes'] as num?)?.toInt() ?? 0,
+        yourTurn: (data['yourTurn'] as bool?) ?? false,
+        waitingCount: (queue['waitingCount'] as num?)?.toInt() ?? 0,
+      );
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) {
+        return null;
+      }
+      final msg = (e.response?.data as Map?)?['message'] ?? e.message;
+      throw Exception(msg);
+    }
+  }
+
   /// POST /api/queues/:id/join
   Future<JoinResult?> joinQueue(String queueId, String token) async {
     try {
@@ -145,26 +169,40 @@ class QueueApiService {
       _socket!.connect();
     }
 
-    // Join the socket room for this queue
-    _socket!.emit('join:queue', queueId);
+    var active = true;
 
-    void handler(dynamic data) {
+    Future<void> refreshPosition() async {
       try {
-        if (data is! Map) return;
-        final map = Map<String, dynamic>.from(data);
-        // queue:updated carries the full queue summary; we also emit a
-        // queuePositionPayload for the specific passenger via passengerPosition.
-        onUpdate(PositionUpdate.fromMap(map));
+        final update = await getQueuePosition(queueId, token);
+        if (active && update != null) {
+          onUpdate(update);
+        }
       } catch (e) {
-        debugPrint('[QueueApi] socket parse error: $e');
+        if (active) {
+          debugPrint('[QueueApi] position refresh failed: $e');
+        }
       }
     }
 
-    _socket!.on('queue:updated', handler);
+    _socket!.emit('queue:subscribe', queueId);
+    refreshPosition();
+
+    void queueUpdatedHandler(dynamic _) {
+      refreshPosition();
+    }
+
+    void yourTurnHandler(dynamic _) {
+      refreshPosition();
+    }
+
+    _socket!.on('queue:updated', queueUpdatedHandler);
+    _socket!.on('queue:your-turn', yourTurnHandler);
 
     return () {
-      _socket?.off('queue:updated', handler);
-      _socket?.emit('leave:queue', queueId);
+      active = false;
+      _socket?.off('queue:updated', queueUpdatedHandler);
+      _socket?.off('queue:your-turn', yourTurnHandler);
+      _socket?.emit('queue:unsubscribe', queueId);
     };
   }
 
