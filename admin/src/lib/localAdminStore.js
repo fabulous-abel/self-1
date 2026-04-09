@@ -158,12 +158,6 @@ export function subscribeToLocalAdminStore(callback) {
   }
 }
 
-export function getDefaultAdminCredentials() {
-  ensureSeedData()
-  const admin = readJson(STORAGE_KEYS.admin, DEFAULT_ADMIN)
-  return { email: admin.email, password: admin.password }
-}
-
 export function getCurrentSession() {
   ensureSeedData()
   return readJson(STORAGE_KEYS.session, null)

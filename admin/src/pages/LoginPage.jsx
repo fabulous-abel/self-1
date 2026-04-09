@@ -1,6 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { getDefaultAdminCredentials } from '../lib/localAdminStore'
 
 export default function LoginPage() {
   const { login } = useAuth()
@@ -8,7 +7,6 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const credentials = useMemo(() => getDefaultAdminCredentials(), [])
 
   const handleLogin = async (event) => {
     event.preventDefault()
@@ -77,11 +75,6 @@ export default function LoginPage() {
               Sign in still uses local browser storage. Queue, dispatch, user, and broadcast data now load through the
               backend API.
             </p>
-
-            <div style={styles.infoBanner}>
-              Default login: <b>{credentials.email}</b> / <b>{credentials.password}</b>
-            </div>
-
             <form onSubmit={handleLogin} style={{ marginTop: 28 }}>
               <label style={styles.label}>Email address</label>
               <input
@@ -89,7 +82,7 @@ export default function LoginPage() {
                 required
                 value={email}
                 onChange={event => setEmail(event.target.value)}
-                placeholder={credentials.email}
+                placeholder="Enter your admin email"
                 style={styles.input}
               />
 
@@ -291,16 +284,6 @@ const styles = {
     color: '#64748b',
     marginTop: 8,
     lineHeight: 1.65,
-  },
-  infoBanner: {
-    marginTop: 18,
-    padding: '12px 14px',
-    background: '#eff6ff',
-    border: '1px solid #bfdbfe',
-    borderRadius: 12,
-    color: '#1d4ed8',
-    fontSize: 13,
-    lineHeight: 1.6,
   },
   label: {
     display: 'block',

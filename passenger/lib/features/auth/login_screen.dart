@@ -30,8 +30,8 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     super.initState();
-    _phoneController = TextEditingController(text: '0913269909');
-    _passwordController = TextEditingController(text: '123456');
+    _phoneController = TextEditingController();
+    _passwordController = TextEditingController();
     _confirmPasswordController = TextEditingController();
   }
 
@@ -248,24 +248,6 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ),
             SizedBox(height: compact ? 22 : 26),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF8FBFF),
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: const Color(0xFFE6EDF5)),
-              ),
-              child: const Text(
-                'Quick access: 0913 269 909 / 123456',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: PassengerColors.ink,
-                ),
-              ),
-            ),
-            const SizedBox(height: 18),
             _FieldLabel(label: 'Phone number', trailing: 'Required'),
             const SizedBox(height: 8),
             TextFormField(
@@ -360,8 +342,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     _isLogin = !_isLogin;
                     _formKey.currentState?.reset();
                     if (_isLogin) {
-                      _phoneController.text = '0913269909';
-                      _passwordController.text = '123456';
+                      _phoneController.clear();
+                      _passwordController.clear();
                     } else {
                       _phoneController.clear();
                       _passwordController.clear();

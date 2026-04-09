@@ -31,8 +31,8 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
   @override
   void initState() {
     super.initState();
-    _phoneController = TextEditingController(text: '0913269909');
-    _passwordController = TextEditingController(text: '123456');
+    _phoneController = TextEditingController();
+    _passwordController = TextEditingController();
     _confirmPasswordController = TextEditingController();
     _vehicleController = TextEditingController();
     Future<void>.microtask(_restoreExistingSession);
@@ -242,24 +242,6 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
               ),
             ),
             SizedBox(height: compact ? 22 : 26),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF5FBFB),
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: const Color(0xFFD7ECE9)),
-              ),
-              child: const Text(
-                'Quick access: use 0913269909 with verification code 123456.',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: DriverColors.ink,
-                ),
-              ),
-            ),
-            const SizedBox(height: 18),
             _FieldLabel(label: 'Phone number', trailing: 'Required'),
             const SizedBox(height: 8),
             TextFormField(
@@ -296,7 +278,6 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
                   onPressed: () =>
                       setState(() => _obscurePassword = !_obscurePassword),
                 ),
-                helperText: 'Use the OTP from the backend demo',
               ),
             ),
             if (!_isLogin) ...[
@@ -369,8 +350,8 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
                     _isLogin = !_isLogin;
                     _formKey.currentState?.reset();
                     if (_isLogin) {
-                      _phoneController.text = '0913269909';
-                      _passwordController.text = '123456';
+                      _phoneController.clear();
+                      _passwordController.clear();
                     } else {
                       _phoneController.clear();
                       _passwordController.clear();

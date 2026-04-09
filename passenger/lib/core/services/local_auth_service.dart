@@ -16,7 +16,7 @@ class PassengerLocalAuthService {
 
     if (user == null || user['password'] != password) {
       throw Exception(
-        'Account not found or password is incorrect. Use the demo account or sign up first.',
+        'Account not found or password is incorrect. Sign up first if you do not have an account.',
       );
     }
 
@@ -61,12 +61,6 @@ class PassengerLocalAuthService {
   Future<void> _ensureSeedData(Box<dynamic> box) async {
     final users = _readUsers(box);
     if (users.isNotEmpty) return;
-
-    users['+251913269909'] = {
-      'password': '123456',
-      'fullName': 'Passenger Demo',
-      'email': _buildEmail('+251913269909'),
-    };
     await box.put(_usersKey, users);
   }
 
