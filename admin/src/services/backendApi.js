@@ -38,6 +38,40 @@ const api = axios.create({
   timeout: 10000,
 })
 
+const socketQueueSubscriptions = new WeakMap()
+
+function extractApiError(error, fallbackMessage = 'Request failed') {
+  return error?.response?.data?.message ?? error?.message ?? fallbackMessage
+}
+
+function createPollingSubscription(load, { onSuccess, onError, intervalMs = 8000 }) {
+  let active = true
+
+  const run = async () => {
+    try {
+      const data = await load()
+      if (active) onSuccess?.(data)
+    } catch (error) {
+      if (active) onError?.(error)
+    }
+  }
+
+  run()
+
+  if (typeof window === 'undefined') {
+    return () => {
+      active = false
+    }
+  }
+
+  const timer = window.setInterval(run, intervalMs)
+
+  return () => {
+    active = false
+    window.clearInterval(timer)
+  }
+}
+
 // ---------- Queues ----------
 
 /** GET /api/queues — returns list of queue summaries */
@@ -107,4 +141,32 @@ export function createSocketConnection() {
   return io ? io(SOCKET_URL, { transports: ['websocket'] }) : null
 }
 
-export { API_BASE, SOCKET_URL, REALTIME_ENABLED }
+export function syncQueueSubscriptions(socket, queueIds = []) {
+  if (!socket) return
+
+  const nextQueueIds = new Set(queueIds.filter(Boolean))
+  const currentQueueIds = socketQueueSubscriptions.get(socket) ?? new Set()
+
+  currentQueueIds.forEach(queueId => {
+    if (!nextQueueIds.has(queueId)) {
+      socket.emit('queue:unsubscribe', queueId)
+    }
+  })
+
+  nextQueueIds.forEach(queueId => {
+    if (!currentQueueIds.has(queueId)) {
+      socket.emit('queue:subscribe', queueId)
+    }
+  })
+
+  socketQueueSubscriptions.set(socket, nextQueueIds)
+}
+
+export {
+  API_BASE,
+  SOCKET_URL,
+  REALTIME_ENABLED,
+  api,
+  extractApiError,
+  createPollingSubscription,
+}
