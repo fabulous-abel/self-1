@@ -81,14 +81,15 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
 
   int _selectedTab = 0;
   late _QueueItem _selectedQueue;
+  String? _expandedQueueId;
   String _query = '';
-  double _sheetExtent = 0.44;
+  double _sheetExtent = 0.38;
   double _mapZoom = 13.4;
   LatLng _mapCenter = _queues.first.point;
 
   // ── Live queue state ───────────────────────────────────────────
-  String? _activeQueueId;         // backend ID of the joined queue
-  int? _queuePosition;            // current position (1 = next)
+  String? _activeQueueId; // backend ID of the joined queue
+  int? _queuePosition; // current position (1 = next)
   int? _estimatedWaitMinutes;
   bool _yourTurn = false;
   bool _isJoining = false;
@@ -100,6 +101,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
     super.initState();
     _searchController = TextEditingController();
     _selectedQueue = _queues.first;
+    _expandedQueueId = _selectedQueue.backendId;
   }
 
   @override
@@ -136,9 +138,16 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
       _query = value.trim();
       if (matches.isNotEmpty && !matches.contains(_selectedQueue)) {
         _selectedQueue = matches.first;
+        _expandedQueueId = matches.first.backendId;
+      } else if (matches.isNotEmpty &&
+          !matches.any((queue) => queue.backendId == _expandedQueueId)) {
+        _expandedQueueId = matches.first.backendId;
       }
       if (matches.isEmpty && _selectedTab == 1) {
         _selectedTab = 0;
+      }
+      if (matches.isEmpty) {
+        _expandedQueueId = null;
       }
     });
 
@@ -162,9 +171,12 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
     _onSearchChanged('');
   }
 
-  void _selectQueue(_QueueItem queue, {int? tab}) {
+  void _selectQueue(_QueueItem queue, {int? tab, bool expandCard = true}) {
     setState(() {
       _selectedQueue = queue;
+      if (expandCard) {
+        _expandedQueueId = queue.backendId;
+      }
       if (tab != null) {
         _selectedTab = tab;
       }
@@ -269,15 +281,48 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
     _moveMap(_mapCenter, zoom: nextZoom);
   }
 
+  void _toggleQueueCard(_QueueItem queue, bool compact) {
+    final shouldExpand = _expandedQueueId != queue.backendId;
+
+    setState(() {
+      _selectedQueue = queue;
+      _expandedQueueId = shouldExpand ? queue.backendId : null;
+    });
+
+    _moveMap(queue.point, zoom: _mapZoom < 14 ? 14 : _mapZoom);
+
+    final previewSize = _midSheetSize(compact);
+    if (shouldExpand && _sheetExtent < previewSize - 0.02) {
+      _sheetController.animateTo(
+        previewSize,
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeOutCubic,
+      );
+    }
+  }
+
+  void _openQueueDetails(_QueueItem queue, bool compact) {
+    _focusQueue(queue, tab: 1);
+
+    final previewSize = _midSheetSize(compact);
+    if (_sheetExtent < previewSize - 0.02) {
+      _sheetController.animateTo(
+        previewSize,
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeOutCubic,
+      );
+    }
+  }
+
   // Bottom nav bar height in logical pixels (approx 68px).
   static const double _navBarHeight = 68.0;
 
   double _collapsedSheetSize(bool compact, double screenH) =>
-      (_navBarHeight + (compact ? 58 : 52)) / screenH;
+      (_navBarHeight + (compact ? 84 : 78)) / screenH;
 
-  double _midSheetSize(bool compact) => compact ? 0.48 : 0.44;
+  double _midSheetSize(bool compact) => compact ? 0.38 : 0.34;
 
-  double _expandedSheetSize(bool compact) => compact ? 0.86 : 0.76;
+  double _expandedSheetSize(bool compact) => compact ? 0.90 : 0.80;
 
   void _toggleSheet(bool compact, double screenH) {
     final collapsed = _collapsedSheetSize(compact, screenH);
@@ -346,7 +391,12 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                 .map(
                   (queue) => Padding(
                     padding: const EdgeInsets.only(bottom: 12),
-                    child: _queueCard(queue, compact, 'Switch'),
+                    child: _queueCard(
+                      queue,
+                      compact,
+                      'Switch',
+                      showDetailAction: false,
+                    ),
                   ),
                 ),
           ],
@@ -551,7 +601,10 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                 const SizedBox(height: 4),
                 Text(
                   _selectedQueue.subtitle,
-                  style: const TextStyle(fontSize: 11, color: Color(0xFF6B7E9D)),
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Color(0xFF6B7E9D),
+                  ),
                 ),
               ],
             ),
@@ -591,16 +644,38 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                             ? OutlinedButton.icon(
                                 onPressed: _isLeaving ? null : _leaveQueue,
                                 icon: _isLeaving
-                                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                                    ? const SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      )
                                     : const Icon(Icons.exit_to_app_rounded),
-                                label: Text(_isLeaving ? 'Leaving...' : 'Leave queue'),
+                                label: Text(
+                                  _isLeaving ? 'Leaving...' : 'Leave queue',
+                                ),
                               )
                             : FilledButton.icon(
-                                onPressed: (_isJoining || _activeQueueId != null) ? null : () => _joinQueue(_selectedQueue),
+                                onPressed:
+                                    (_isJoining || _activeQueueId != null)
+                                    ? null
+                                    : () => _joinQueue(_selectedQueue),
                                 icon: _isJoining
-                                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                    ? const SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.white,
+                                        ),
+                                      )
                                     : const Icon(Icons.add_rounded),
-                                label: Text(_isJoining ? 'Joining...' : 'Join selected queue'),
+                                label: Text(
+                                  _isJoining
+                                      ? 'Joining...'
+                                      : 'Join selected queue',
+                                ),
                               ),
                       ),
                       const SizedBox(height: 10),
@@ -620,16 +695,38 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                             ? OutlinedButton.icon(
                                 onPressed: _isLeaving ? null : _leaveQueue,
                                 icon: _isLeaving
-                                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                                    ? const SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      )
                                     : const Icon(Icons.exit_to_app_rounded),
-                                label: Text(_isLeaving ? 'Leaving...' : 'Leave queue'),
+                                label: Text(
+                                  _isLeaving ? 'Leaving...' : 'Leave queue',
+                                ),
                               )
                             : FilledButton.icon(
-                                onPressed: (_isJoining || _activeQueueId != null) ? null : () => _joinQueue(_selectedQueue),
+                                onPressed:
+                                    (_isJoining || _activeQueueId != null)
+                                    ? null
+                                    : () => _joinQueue(_selectedQueue),
                                 icon: _isJoining
-                                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                    ? const SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.white,
+                                        ),
+                                      )
                                     : const Icon(Icons.add_rounded),
-                                label: Text(_isJoining ? 'Joining...' : 'Join selected queue'),
+                                label: Text(
+                                  _isJoining
+                                      ? 'Joining...'
+                                      : 'Join selected queue',
+                                ),
                               ),
                       ),
                       const SizedBox(width: 10),
@@ -647,118 +744,306 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
     );
   }
 
-  Widget _queueCard(_QueueItem queue, bool compact, String action) {
-    final selected = queue == _selectedQueue;
-    final isThisActive = queue.backendId == _activeQueueId;
-    final canJoin = !_isJoining && _activeQueueId == null;
-
-    return InkWell(
-      onTap: () => _focusQueue(queue, tab: 1),
-      borderRadius: BorderRadius.circular(24),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: isThisActive
-              ? PassengerColors.teal.withValues(alpha: 0.06)
-              : selected
-                  ? const Color(0xFFFFF6F0)
-                  : const Color(0xFFF8FBFF),
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: isThisActive
-                ? PassengerColors.teal.withValues(alpha: 0.36)
-                : selected
-                    ? queue.color.withValues(alpha: 0.36)
-                    : const Color(0xFFE6EDF5),
+  Widget _queueMetaPill(
+    String label, {
+    IconData? icon,
+    Color color = const Color(0xFF6B7E9D),
+    bool emphasized = false,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: emphasized ? 0.14 : 0.09),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 14, color: color),
+            const SizedBox(width: 6),
+          ],
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
           ),
-        ),
-        child: compact
-            ? Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _queueSummary(queue),
-                  const SizedBox(height: 14),
-                  SizedBox(
-                    width: double.infinity,
-                    child: isThisActive
-                        ? OutlinedButton.icon(
-                            onPressed: _isLeaving ? null : _leaveQueue,
-                            icon: const Icon(Icons.exit_to_app_rounded, size: 18),
-                            label: Text(_isLeaving ? 'Leaving...' : 'Leave queue'),
-                          )
-                        : FilledButton(
-                            onPressed: canJoin ? () => _joinQueue(queue) : null,
-                            style: FilledButton.styleFrom(
-                              backgroundColor: queue.color,
-                            ),
-                            child: Text(action),
-                          ),
-                  ),
-                ],
-              )
-            : Row(
-                children: [
-                  Expanded(child: _queueSummary(queue)),
-                  const SizedBox(width: 12),
-                  isThisActive
-                      ? OutlinedButton.icon(
-                          onPressed: _isLeaving ? null : _leaveQueue,
-                          icon: const Icon(Icons.exit_to_app_rounded, size: 18),
-                          label: Text(_isLeaving ? 'Leaving...' : 'Leave'),
-                        )
-                      : FilledButton(
-                          onPressed: canJoin ? () => _joinQueue(queue) : null,
-                          style: FilledButton.styleFrom(backgroundColor: queue.color),
-                          child: Text(action),
-                        ),
-                ],
-              ),
+        ],
       ),
     );
   }
 
-  Widget _queueSummary(_QueueItem queue) {
-    return Row(
-      children: [
-        Container(
-          height: 58,
-          width: 58,
-          decoration: BoxDecoration(
-            color: queue.color.withValues(alpha: 0.14),
-            borderRadius: BorderRadius.circular(18),
-          ),
-          child: Icon(queue.icon, color: queue.color, size: 25),
+  Widget _queueCard(
+    _QueueItem queue,
+    bool compact,
+    String action, {
+    bool showDetailAction = true,
+  }) {
+    final selected = queue == _selectedQueue;
+    final isThisActive = queue.backendId == _activeQueueId;
+    final canJoin = !_isJoining && _activeQueueId == null;
+    final expanded = _expandedQueueId == queue.backendId;
+    final joiningThisQueue = _isJoining && queue == _selectedQueue;
+    final leavingThisQueue = _isLeaving && isThisActive;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      decoration: BoxDecoration(
+        color: isThisActive
+            ? PassengerColors.teal.withValues(alpha: 0.06)
+            : selected
+            ? const Color(0xFFFFF6F0)
+            : const Color(0xFFF8FBFF),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: isThisActive
+              ? PassengerColors.teal.withValues(alpha: 0.36)
+              : selected
+              ? queue.color.withValues(alpha: 0.36)
+              : const Color(0xFFE6EDF5),
         ),
-        const SizedBox(width: 14),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                queue.title,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
+        boxShadow: expanded
+            ? [
+                BoxShadow(
+                  color: queue.color.withValues(alpha: 0.08),
+                  blurRadius: 18,
+                  offset: const Offset(0, 10),
                 ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                queue.route,
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: PassengerColors.ink,
+              ]
+            : const [],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => _toggleQueueCard(queue, compact),
+          borderRadius: BorderRadius.circular(24),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      height: 58,
+                      width: 58,
+                      decoration: BoxDecoration(
+                        color: queue.color.withValues(alpha: 0.14),
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: Icon(queue.icon, color: queue.color, size: 25),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            queue.title,
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            queue.route,
+                            maxLines: expanded ? 2 : 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: PassengerColors.ink,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 180),
+                            child: expanded
+                                ? Text(
+                                    queue.subtitle,
+                                    key: ValueKey(
+                                      'expanded-${queue.backendId}',
+                                    ),
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      color: Color(0xFF6B7E9D),
+                                      height: 1.45,
+                                    ),
+                                  )
+                                : Wrap(
+                                    key: ValueKey(
+                                      'collapsed-${queue.backendId}',
+                                    ),
+                                    spacing: 8,
+                                    runSpacing: 8,
+                                    children: [
+                                      _queueMetaPill(
+                                        queue.waitTime,
+                                        icon: Icons.schedule_rounded,
+                                        color: queue.color,
+                                      ),
+                                      _queueMetaPill(
+                                        queue.distance,
+                                        icon: Icons.near_me_rounded,
+                                      ),
+                                    ],
+                                  ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        _queueMetaPill(
+                          isThisActive ? 'Active' : '${queue.seatsOpen} open',
+                          icon: isThisActive
+                              ? Icons.check_circle_rounded
+                              : Icons.event_seat_rounded,
+                          color: isThisActive
+                              ? PassengerColors.teal
+                              : queue.color,
+                          emphasized: true,
+                        ),
+                        const SizedBox(height: 10),
+                        AnimatedRotation(
+                          turns: expanded ? 0.5 : 0,
+                          duration: const Duration(milliseconds: 220),
+                          curve: Curves.easeOutCubic,
+                          child: const Icon(
+                            Icons.keyboard_arrow_down_rounded,
+                            color: Color(0xFF8A98B3),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                queue.subtitle,
-                style: const TextStyle(fontSize: 11, color: Color(0xFF6B7E9D)),
-              ),
-            ],
+                ClipRect(
+                  child: AnimatedSize(
+                    duration: const Duration(milliseconds: 220),
+                    curve: Curves.easeOutCubic,
+                    child: expanded
+                        ? Padding(
+                            padding: const EdgeInsets.only(top: 14),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: [
+                                    _queueMetaPill(
+                                      queue.waitTime,
+                                      icon: Icons.schedule_rounded,
+                                      color: queue.color,
+                                    ),
+                                    _queueMetaPill(
+                                      queue.distance,
+                                      icon: Icons.near_me_rounded,
+                                    ),
+                                    _queueMetaPill(
+                                      '${queue.seatsOpen} seats open',
+                                      icon: Icons.event_seat_rounded,
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                Text(
+                                  queue.pickupNote,
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: Color(0xFF5F7392),
+                                    height: 1.45,
+                                  ),
+                                ),
+                                const SizedBox(height: 14),
+                                OverflowBar(
+                                  spacing: 10,
+                                  overflowSpacing: 10,
+                                  alignment: MainAxisAlignment.start,
+                                  children: [
+                                    if (showDetailAction)
+                                      OutlinedButton.icon(
+                                        onPressed: () =>
+                                            _openQueueDetails(queue, compact),
+                                        icon: const Icon(
+                                          Icons.open_in_full_rounded,
+                                          size: 18,
+                                        ),
+                                        label: const Text('Details'),
+                                      ),
+                                    isThisActive
+                                        ? OutlinedButton.icon(
+                                            onPressed: leavingThisQueue
+                                                ? null
+                                                : _leaveQueue,
+                                            icon: leavingThisQueue
+                                                ? const SizedBox(
+                                                    width: 16,
+                                                    height: 16,
+                                                    child:
+                                                        CircularProgressIndicator(
+                                                          strokeWidth: 2,
+                                                        ),
+                                                  )
+                                                : const Icon(
+                                                    Icons.exit_to_app_rounded,
+                                                    size: 18,
+                                                  ),
+                                            label: Text(
+                                              leavingThisQueue
+                                                  ? 'Leaving...'
+                                                  : 'Leave queue',
+                                            ),
+                                          )
+                                        : FilledButton.icon(
+                                            onPressed: canJoin
+                                                ? () => _joinQueue(queue)
+                                                : null,
+                                            style: FilledButton.styleFrom(
+                                              backgroundColor: queue.color,
+                                            ),
+                                            icon: joiningThisQueue
+                                                ? const SizedBox(
+                                                    width: 16,
+                                                    height: 16,
+                                                    child:
+                                                        CircularProgressIndicator(
+                                                          strokeWidth: 2,
+                                                          color: Colors.white,
+                                                        ),
+                                                  )
+                                                : const Icon(
+                                                    Icons.add_rounded,
+                                                    size: 18,
+                                                  ),
+                                            label: Text(
+                                              joiningThisQueue
+                                                  ? 'Joining...'
+                                                  : action,
+                                            ),
+                                          ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
-      ],
+      ),
     );
   }
 
@@ -1037,7 +1322,9 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                                       width: 44,
                                       decoration: BoxDecoration(
                                         color: const Color(0xFFD8E0EC),
-                                        borderRadius: BorderRadius.circular(999),
+                                        borderRadius: BorderRadius.circular(
+                                          999,
+                                        ),
                                       ),
                                     ),
                                     const SizedBox(height: 14),
@@ -1052,15 +1339,24 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                                             ),
                                           ),
                                         ),
-                                        TextButton(
-                                          onPressed: () {
-                                            setState(() => _selectedTab = 0);
-                                            if (_query.isNotEmpty) {
-                                              _clearSearch();
-                                            }
-                                          },
-                                          child: const Text('See all'),
-                                        ),
+                                        _selectedTab == 0 && _query.isEmpty
+                                            ? _queueMetaPill(
+                                                '${_visibleQueues.length} nearby',
+                                                icon: Icons.near_me_rounded,
+                                                color: PassengerColors.teal,
+                                                emphasized: true,
+                                              )
+                                            : TextButton(
+                                                onPressed: () {
+                                                  setState(
+                                                    () => _selectedTab = 0,
+                                                  );
+                                                  if (_query.isNotEmpty) {
+                                                    _clearSearch();
+                                                  }
+                                                },
+                                                child: const Text('See all'),
+                                              ),
                                       ],
                                     ),
                                   ],
@@ -1076,7 +1372,8 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                             ),
                             // Extra padding so content clears the nav bar
                             SizedBox(
-                              height: _navBarHeight +
+                              height:
+                                  _navBarHeight +
                                   MediaQuery.of(context).padding.bottom,
                             ),
                           ],
@@ -1184,7 +1481,9 @@ class _LiveStatusCard extends StatelessWidget {
               borderRadius: BorderRadius.circular(16),
             ),
             child: Icon(
-              yourTurn ? Icons.notifications_active_rounded : Icons.queue_rounded,
+              yourTurn
+                  ? Icons.notifications_active_rounded
+                  : Icons.queue_rounded,
               color: accent,
               size: 24,
             ),
@@ -1227,9 +1526,15 @@ class _LiveStatusCard extends StatelessWidget {
                 ? SizedBox(
                     width: 16,
                     height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: accent),
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: accent,
+                    ),
                   )
-                : const Text('Leave', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+                : const Text(
+                    'Leave',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                  ),
           ),
         ],
       ),
