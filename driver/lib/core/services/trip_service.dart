@@ -1,4 +1,6 @@
 import 'backend_api_client.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 
 class TripService {
   TripService({BackendApiClient? client})
@@ -90,5 +92,14 @@ class TripService {
     required String token,
   }) {
     return _client.get('/drivers/me/earnings', token: token);
+  }
+
+  Future<void> playQueueArrivalAlert() async {
+    try {
+      await HapticFeedback.vibrate();
+      await SystemSound.play(SystemSoundType.alert);
+    } catch (error) {
+      debugPrint('Unable to play driver queue alert: $error');
+    }
   }
 }

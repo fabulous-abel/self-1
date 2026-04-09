@@ -25,6 +25,7 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
   late DriverProfile _profile;
   Map<String, dynamic>? _dashboard;
   Timer? _timer;
+  Set<String> _knownQueueEntryIds = <String>{};
   int _tab = 0;
   bool _loading = true;
   bool _refreshing = false;
@@ -97,6 +98,15 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
     final driver = _map(dashboard['driver']);
     final queue = _map(driver['queue'] ?? dashboard['queue']);
     final vehicle = _map(driver['vehicle']);
+    final nextEntries = _list(dashboard['entries']);
+    final nextEntryIds = _entryIds(nextEntries);
+    final wasOnline = _online;
+    final nextOnline =
+        _bool(driver['isOnline']) || _text(driver['status']) == 'online';
+    final addedEntryIds =
+        _dashboard == null
+            ? const <String>{}
+            : nextEntryIds.difference(_knownQueueEntryIds);
     final vehicleInfo = _profile.vehicleInfo.isNotEmpty && _profile.vehicleInfo != 'Vehicle pending'
         ? _profile.vehicleInfo
         : _vehicleSummary(vehicle);
@@ -109,14 +119,19 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
         vehicleInfo: vehicleInfo,
         queueName: _text(queue['name']) ?? _profile.queueName,
         status: _text(driver['status']) ?? _profile.status,
-        isOnline: _bool(driver['isOnline']) || _text(driver['status']) == 'online',
+        isOnline: nextOnline,
         driverId: _text(driver['id']) ?? _profile.driverId,
         userId: _text(driver['userId']) ?? _profile.userId,
       );
       _dashboard = dashboard;
+      _knownQueueEntryIds = nextEntryIds;
       _error = null;
       _loading = false;
     });
+
+    if (wasOnline && nextOnline && addedEntryIds.isNotEmpty) {
+      unawaited(_tripService.playQueueArrivalAlert());
+    }
   }
 
   Future<void> _setOnline(bool value) async {
@@ -204,6 +219,17 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
   List<Map<String, dynamic>> _list(dynamic value) {
     if (value is! List) return <Map<String, dynamic>>[];
     return value.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+  }
+
+  Set<String> _entryIds(List<Map<String, dynamic>> entries) {
+    return entries
+        .map(
+          (entry) =>
+              _text(entry['id']) ??
+              _text(entry['passengerId']) ??
+              '${_text(entry['passengerName']) ?? 'passenger'}-${_text(entry['joinedAt']) ?? _text(entry['pickupLabel']) ?? ''}',
+        )
+        .toSet();
   }
 
   String? _text(dynamic value) {
