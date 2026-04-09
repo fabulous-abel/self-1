@@ -7,6 +7,25 @@ function normalizeUrl(url) {
   return url ? url.replace(/\/+$/, '') : ''
 }
 
+function ensureApiBasePath(url) {
+  const normalized = normalizeUrl(url)
+
+  if (!normalized) return ''
+
+  try {
+    const parsed = new URL(normalized)
+    const pathname = parsed.pathname.replace(/\/+$/, '')
+
+    if (!pathname || pathname === '/') {
+      parsed.pathname = '/api'
+    }
+
+    return normalizeUrl(parsed.toString())
+  } catch {
+    return normalized
+  }
+}
+
 function getBooleanEnv(name, defaultValue) {
   const value = import.meta.env[name]
 
@@ -16,17 +35,18 @@ function getBooleanEnv(name, defaultValue) {
 }
 
 function getApiBase() {
-  return normalizeUrl(import.meta.env.VITE_API_BASE_URL) || DEFAULT_API_BASE
+  return ensureApiBasePath(import.meta.env.VITE_API_BASE_URL) || DEFAULT_API_BASE
 }
 
 function getSocketUrl(apiBase) {
   const configuredSocketUrl = normalizeUrl(import.meta.env.VITE_SOCKET_URL)
   if (configuredSocketUrl) return configuredSocketUrl
 
-  // Fall back to the API origin when the API path ends with /api.
-  return apiBase.endsWith('/api')
-    ? apiBase.slice(0, -'/api'.length)
-    : DEFAULT_SOCKET_URL
+  try {
+    return new URL(apiBase).origin
+  } catch {
+    return DEFAULT_SOCKET_URL
+  }
 }
 
 const API_BASE = getApiBase()

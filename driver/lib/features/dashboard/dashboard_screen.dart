@@ -30,7 +30,6 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
   bool _loading = true;
   bool _refreshing = false;
   bool _busy = false;
-  String? _error;
 
   @override
   void initState() {
@@ -48,7 +47,10 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
   Future<void> _bootstrap() async {
     await _loadDashboard(showLoading: true);
     if (!mounted) return;
-    _timer = Timer.periodic(const Duration(seconds: 8), (_) => _loadDashboard());
+    _timer = Timer.periodic(
+      const Duration(seconds: 8),
+      (_) => _loadDashboard(),
+    );
   }
 
   Map<String, dynamic> get _driver => _map(_dashboard?['driver']);
@@ -57,10 +59,13 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
   Map<String, dynamic> get _earnings => _map(_dashboard?['earnings']);
   List<Map<String, dynamic>> get _entries => _list(_dashboard?['entries']);
 
-  bool get _online => _bool(_driver['isOnline']) || _text(_driver['status']) == 'online';
+  bool get _online =>
+      _bool(_driver['isOnline']) || _text(_driver['status']) == 'online';
 
   String get _queueName {
-    return _text(_profile.queueName) ?? _text(_queue['name']) ?? 'Assigned queue';
+    return _text(_profile.queueName) ??
+        _text(_queue['name']) ??
+        'Assigned queue';
   }
 
   Future<void> _loadDashboard({bool showLoading = false}) async {
@@ -73,20 +78,20 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
     });
 
     try {
-      final dashboard = await _tripService.refreshDashboard(token: _profile.token);
+      final dashboard = await _tripService.refreshDashboard(
+        token: _profile.token,
+      );
       _applyDashboard(dashboard);
     } on SessionExpiredException {
       await _logout();
-    } on BackendApiException catch (error) {
+    } on BackendApiException {
       if (!mounted) return;
       setState(() {
-        _error = error.message;
         _loading = false;
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _error = 'Unable to refresh the dashboard.';
         _loading = false;
       });
     } finally {
@@ -103,11 +108,12 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
     final wasOnline = _online;
     final nextOnline =
         _bool(driver['isOnline']) || _text(driver['status']) == 'online';
-    final addedEntryIds =
-        _dashboard == null
-            ? const <String>{}
-            : nextEntryIds.difference(_knownQueueEntryIds);
-    final vehicleInfo = _profile.vehicleInfo.isNotEmpty && _profile.vehicleInfo != 'Vehicle pending'
+    final addedEntryIds = _dashboard == null
+        ? const <String>{}
+        : nextEntryIds.difference(_knownQueueEntryIds);
+    final vehicleInfo =
+        _profile.vehicleInfo.isNotEmpty &&
+            _profile.vehicleInfo != 'Vehicle pending'
         ? _profile.vehicleInfo
         : _vehicleSummary(vehicle);
 
@@ -125,7 +131,6 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
       );
       _dashboard = dashboard;
       _knownQueueEntryIds = nextEntryIds;
-      _error = null;
       _loading = false;
     });
 
@@ -139,7 +144,10 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
     setState(() => _busy = true);
 
     try {
-      final dashboard = await _tripService.setAvailability(token: _profile.token, online: value);
+      final dashboard = await _tripService.setAvailability(
+        token: _profile.token,
+        online: value,
+      );
       _applyDashboard(dashboard);
     } on SessionExpiredException {
       await _logout();
@@ -155,13 +163,17 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
     setState(() => _busy = true);
 
     try {
-      final result = await _tripService.acceptNextPassenger(token: _profile.token);
+      final result = await _tripService.acceptNextPassenger(
+        token: _profile.token,
+      );
       final dashboard = _map(result['dashboard']);
       if (dashboard.isNotEmpty) _applyDashboard(dashboard);
       if (mounted) {
         final ride = _map(result['ride']);
         _message(
-          ride.isEmpty ? 'No passengers are waiting right now' : 'Accepted ${_text(ride['passengerName']) ?? 'next passenger'}',
+          ride.isEmpty
+              ? 'No passengers are waiting right now'
+              : 'Accepted ${_text(ride['passengerName']) ?? 'next passenger'}',
         );
       }
     } on SessionExpiredException {
@@ -186,7 +198,11 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
       );
       final dashboard = _map(result['dashboard']);
       if (dashboard.isNotEmpty) _applyDashboard(dashboard);
-      if (mounted) _message(status == 'arrived' ? 'Ride marked as arrived' : 'Ride completed');
+      if (mounted) {
+        _message(
+          status == 'arrived' ? 'Ride marked as arrived' : 'Ride completed',
+        );
+      }
     } on SessionExpiredException {
       await _logout();
     } on BackendApiException catch (error) {
@@ -218,7 +234,10 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
 
   List<Map<String, dynamic>> _list(dynamic value) {
     if (value is! List) return <Map<String, dynamic>>[];
-    return value.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+    return value
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
   }
 
   Set<String> _entryIds(List<Map<String, dynamic>> entries) {
@@ -294,9 +313,15 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(color: DriverColors.muted, fontSize: 13)),
+          Text(
+            label,
+            style: const TextStyle(color: DriverColors.muted, fontSize: 13),
+          ),
           const SizedBox(height: 6),
-          Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+          Text(
+            value,
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+          ),
         ],
       ),
     );
@@ -306,8 +331,8 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
     final subtitle = _ride.isNotEmpty
         ? 'A ride is active'
         : _entries.isNotEmpty
-            ? 'Passengers are waiting in $_queueName'
-            : 'No passengers are waiting right now';
+        ? 'Passengers are waiting in $_queueName'
+        : 'No passengers are waiting right now';
 
     return Card(
       elevation: 0,
@@ -317,8 +342,12 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(24),
           gradient: _online
-              ? const LinearGradient(colors: [DriverColors.teal, Color(0xFF22877F)])
-              : const LinearGradient(colors: [Color(0xFF29415A), Color(0xFF364C67)]),
+              ? const LinearGradient(
+                  colors: [DriverColors.teal, Color(0xFF22877F)],
+                )
+              : const LinearGradient(
+                  colors: [Color(0xFF29415A), Color(0xFF364C67)],
+                ),
         ),
         child: Row(
           children: [
@@ -326,9 +355,22 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('STATUS', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w800)),
+                  const Text(
+                    'STATUS',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
                   const SizedBox(height: 8),
-                  Text(_online ? 'You are online' : 'Go online', style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w800)),
+                  Text(
+                    _online ? 'You are online' : 'Go online',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 28,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
                   const SizedBox(height: 6),
                   Text(subtitle, style: const TextStyle(color: Colors.white70)),
                 ],
@@ -336,7 +378,11 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
             ),
             Switch.adaptive(
               value: _online,
-              onChanged: _busy ? null : (value) { _setOnline(value); },
+              onChanged: _busy
+                  ? null
+                  : (value) {
+                      _setOnline(value);
+                    },
               activeThumbColor: DriverColors.teal,
               activeTrackColor: Colors.white70,
             ),
@@ -351,7 +397,11 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
       return Card(
         child: Padding(
           padding: const EdgeInsets.all(16),
-          child: Text(_online ? 'No active ride. Accept the next passenger when ready.' : 'Go online to start receiving rides.'),
+          child: Text(
+            _online
+                ? 'No active ride. Accept the next passenger when ready.'
+                : 'Go online to start receiving rides.',
+          ),
         ),
       );
     }
@@ -368,27 +418,48 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
           children: [
             Row(
               children: [
-                const Expanded(child: Text('Active ride', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800))),
+                const Expanded(
+                  child: Text(
+                    'Active ride',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+                  ),
+                ),
                 Chip(label: Text(_titleCase(status))),
               ],
             ),
             const SizedBox(height: 10),
-            Text(_text(_ride['passengerName']) ?? 'Passenger', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
-            Text(_text(_ride['pickupLabel']) ?? 'Pickup pending', style: const TextStyle(color: DriverColors.muted)),
-            Text(_text(_ride['destinationLabel']) ?? 'Destination pending', style: const TextStyle(color: DriverColors.muted)),
+            Text(
+              _text(_ride['passengerName']) ?? 'Passenger',
+              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+            ),
+            Text(
+              _text(_ride['pickupLabel']) ?? 'Pickup pending',
+              style: const TextStyle(color: DriverColors.muted),
+            ),
+            Text(
+              _text(_ride['destinationLabel']) ?? 'Destination pending',
+              style: const TextStyle(color: DriverColors.muted),
+            ),
             const SizedBox(height: 10),
             Wrap(
               spacing: 12,
               runSpacing: 12,
               children: [
                 _tile('Fare', _money(_ride['fareEtb'])),
-                _tile('Passengers', '${_int(_ride['passengers'], fallback: 1)}'),
+                _tile(
+                  'Passengers',
+                  '${_int(_ride['passengers'], fallback: 1)}',
+                ),
                 _tile('Vehicle', _text(_ride['vehiclePlate']) ?? 'Pending'),
               ],
             ),
             const SizedBox(height: 12),
             FilledButton(
-              onPressed: _busy ? null : () { _updateRide(actionStatus); },
+              onPressed: _busy
+                  ? null
+                  : () {
+                      _updateRide(actionStatus);
+                    },
               child: Text(actionLabel),
             ),
           ],
@@ -403,14 +474,26 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
       child: ListTile(
         leading: CircleAvatar(
           backgroundColor: const Color(0xFFEAF5F4),
-          child: Text('${_int(entry['position'])}', style: const TextStyle(color: DriverColors.teal, fontWeight: FontWeight.w800)),
+          child: Text(
+            '${_int(entry['position'])}',
+            style: const TextStyle(
+              color: DriverColors.teal,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
         ),
         title: Text(_text(entry['passengerName']) ?? 'Passenger'),
-        subtitle: Text('${_text(entry['pickupLabel']) ?? 'Pickup pending'}\n${_text(entry['destinationLabel']) ?? 'Destination pending'}'),
+        subtitle: Text(
+          '${_text(entry['pickupLabel']) ?? 'Pickup pending'}\n${_text(entry['destinationLabel']) ?? 'Destination pending'}',
+        ),
         isThreeLine: true,
         trailing: highlight && _online && _ride.isEmpty
             ? TextButton(
-                onPressed: _busy ? null : () { _acceptNext(); },
+                onPressed: _busy
+                    ? null
+                    : () {
+                        _acceptNext();
+                      },
                 child: const Text('Accept'),
               )
             : null,
@@ -436,15 +519,20 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
         const SizedBox(height: 16),
         _rideCard(),
         const SizedBox(height: 16),
-        const Text('Next in queue', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+        const Text(
+          'Next in queue',
+          style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+        ),
         const SizedBox(height: 10),
         if (_entries.isEmpty)
           const Text('No riders are waiting right now.')
         else
-          ..._entries.asMap().entries.map((entry) => Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: _entryCard(entry.value, highlight: entry.key == 0),
-              )),
+          ..._entries.asMap().entries.map(
+            (entry) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _entryCard(entry.value, highlight: entry.key == 0),
+            ),
+          ),
       ],
     );
   }
@@ -466,14 +554,20 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
         const SizedBox(height: 16),
         if (_online && _entries.isNotEmpty && _ride.isEmpty)
           FilledButton(
-            onPressed: _busy ? null : () { _acceptNext(); },
+            onPressed: _busy
+                ? null
+                : () {
+                    _acceptNext();
+                  },
             child: const Text('Accept next passenger'),
           ),
         const SizedBox(height: 12),
-        ..._entries.asMap().entries.map((entry) => Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: _entryCard(entry.value, highlight: entry.key == 0),
-            )),
+        ..._entries.asMap().entries.map(
+          (entry) => Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _entryCard(entry.value, highlight: entry.key == 0),
+          ),
+        ),
       ],
     );
   }
@@ -488,9 +582,18 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Today', style: TextStyle(color: DriverColors.muted)),
+                const Text(
+                  'Today',
+                  style: TextStyle(color: DriverColors.muted),
+                ),
                 const SizedBox(height: 6),
-                Text(_money(_earnings['today']), style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800)),
+                Text(
+                  _money(_earnings['today']),
+                  style: const TextStyle(
+                    fontSize: 30,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
                 const SizedBox(height: 4),
                 const Text('Backend revenue snapshot'),
               ],
@@ -524,24 +627,49 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(_profile.fullName, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
+                Text(
+                  _profile.fullName,
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
                 const SizedBox(height: 4),
-                Text(_profile.phoneNumber, style: const TextStyle(color: DriverColors.muted)),
+                Text(
+                  _profile.phoneNumber,
+                  style: const TextStyle(color: DriverColors.muted),
+                ),
                 const SizedBox(height: 12),
                 _tile('Queue', _queueName),
                 const SizedBox(height: 10),
-                _tile('Vehicle', _profile.vehicleInfo.isNotEmpty ? _profile.vehicleInfo : _vehicleSummary(vehicle)),
+                _tile(
+                  'Vehicle',
+                  _profile.vehicleInfo.isNotEmpty
+                      ? _profile.vehicleInfo
+                      : _vehicleSummary(vehicle),
+                ),
                 const SizedBox(height: 10),
-                _tile('Documents', _text(documents['lastUploadedDocumentType']) ?? 'None uploaded'),
+                _tile(
+                  'Documents',
+                  _text(documents['lastUploadedDocumentType']) ??
+                      'None uploaded',
+                ),
                 const SizedBox(height: 10),
-                _tile('Driver ID', _profile.driverId.isNotEmpty ? _profile.driverId : _text(_driver['id']) ?? 'Pending'),
+                _tile(
+                  'Driver ID',
+                  _profile.driverId.isNotEmpty
+                      ? _profile.driverId
+                      : _text(_driver['id']) ?? 'Pending',
+                ),
               ],
             ),
           ),
         ),
         const SizedBox(height: 16),
         FilledButton.tonalIcon(
-          onPressed: () { _logout(); },
+          onPressed: () {
+            _logout();
+          },
           icon: const Icon(Icons.logout_rounded),
           label: const Text('Log out'),
         ),
@@ -580,9 +708,18 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
       unselectedItemColor: const Color(0xFF97A6BE),
       items: const [
         BottomNavigationBarItem(icon: Icon(Icons.home_rounded), label: 'Home'),
-        BottomNavigationBarItem(icon: Icon(Icons.format_list_bulleted_rounded), label: 'Queue'),
-        BottomNavigationBarItem(icon: Icon(Icons.payments_rounded), label: 'Earnings'),
-        BottomNavigationBarItem(icon: Icon(Icons.person_rounded), label: 'Profile'),
+        BottomNavigationBarItem(
+          icon: Icon(Icons.format_list_bulleted_rounded),
+          label: 'Queue',
+        ),
+        BottomNavigationBarItem(
+          icon: Icon(Icons.payments_rounded),
+          label: 'Earnings',
+        ),
+        BottomNavigationBarItem(
+          icon: Icon(Icons.person_rounded),
+          label: 'Profile',
+        ),
       ],
     );
   }
@@ -598,11 +735,17 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
         title: Text('Welcome, ${_firstName(_profile.fullName)}'),
         actions: [
           IconButton(
-            onPressed: _refreshing ? null : () { _loadDashboard(); },
+            onPressed: _refreshing
+                ? null
+                : () {
+                    _loadDashboard();
+                  },
             icon: const Icon(Icons.refresh_rounded),
           ),
           IconButton(
-            onPressed: () { _logout(); },
+            onPressed: () {
+              _logout();
+            },
             icon: const Icon(Icons.logout_rounded),
           ),
         ],

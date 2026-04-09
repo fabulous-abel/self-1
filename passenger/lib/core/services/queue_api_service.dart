@@ -48,14 +48,53 @@ class PositionUpdate {
 // ── Service ──────────────────────────────────────────────────────────────────
 
 class QueueApiService {
+  static String _trimTrailingSlash(String value) {
+    return value.replaceFirst(RegExp(r'/+$'), '');
+  }
+
+  static String _resolveApiBase(String? configured) {
+    final candidate = _trimTrailingSlash((configured ?? '').trim());
+    if (candidate.isEmpty) {
+      return 'http://10.0.2.2:5000/api';
+    }
+
+    final uri = Uri.tryParse(candidate);
+    if (uri != null && uri.hasScheme && uri.host.isNotEmpty) {
+      final hasPath = uri.pathSegments.any((segment) => segment.isNotEmpty);
+      if (!hasPath) {
+        return _trimTrailingSlash(uri.replace(path: '/api').toString());
+      }
+
+      return _trimTrailingSlash(uri.toString());
+    }
+
+    return candidate;
+  }
+
+  static String _resolveSocketUrl(String? configured, String apiBase) {
+    final candidate = _trimTrailingSlash((configured ?? '').trim());
+    if (candidate.isNotEmpty) {
+      return candidate;
+    }
+
+    final uri = Uri.tryParse(apiBase);
+    if (uri != null && uri.hasScheme && uri.host.isNotEmpty) {
+      return _trimTrailingSlash(
+        uri.replace(path: '', query: null, fragment: null).toString(),
+      );
+    }
+
+    return 'http://10.0.2.2:5000';
+  }
+
   QueueApiService._() {
-    final base = dotenv.env['API_BASE_URL'] ?? 'http://10.0.2.2:5000/api';
+    final base = _resolveApiBase(dotenv.env['API_BASE_URL']);
     _dio = Dio(BaseOptions(
       baseUrl: base,
       connectTimeout: const Duration(seconds: 8),
       receiveTimeout: const Duration(seconds: 10),
     ));
-    _socketUrl = dotenv.env['SOCKET_URL'] ?? 'http://10.0.2.2:5000';
+    _socketUrl = _resolveSocketUrl(dotenv.env['SOCKET_URL'], base);
   }
 
   static final QueueApiService instance = QueueApiService._();

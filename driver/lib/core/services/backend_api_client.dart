@@ -39,10 +39,24 @@ class BackendApiClient {
 
   final Dio _dio;
 
+  static String _trimTrailingSlash(String value) {
+    return value.replaceFirst(RegExp(r'/+$'), '');
+  }
+
   static String get _baseUrl {
-    final configured = (dotenv.env['API_BASE_URL'] ?? '').trim();
+    final configured = _trimTrailingSlash((dotenv.env['API_BASE_URL'] ?? '').trim());
     if (configured.isNotEmpty) {
-      return configured.replaceAll(RegExp(r'/$'), '');
+      final uri = Uri.tryParse(configured);
+      if (uri != null && uri.hasScheme && uri.host.isNotEmpty) {
+        final hasPath = uri.pathSegments.any((segment) => segment.isNotEmpty);
+        if (!hasPath) {
+          return _trimTrailingSlash(uri.replace(path: '/api').toString());
+        }
+
+        return _trimTrailingSlash(uri.toString());
+      }
+
+      return configured;
     }
 
     return 'http://10.0.2.2:3000/api';

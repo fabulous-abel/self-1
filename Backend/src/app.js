@@ -56,6 +56,11 @@ app.get("/", (req, res) => {
 
 app.use(apiPrefix, apiRouter);
 
+if (apiPrefix !== "/") {
+  // Support clients that were configured with only the backend origin.
+  app.use(apiRouter);
+}
+
 app.use((req, res) => {
   res.status(404).json({
     message: "Route not found",
