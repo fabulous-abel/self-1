@@ -6,6 +6,7 @@ import {
   adminRemovePassenger,
   ensureAdminToken,
   createSocketConnection,
+  syncQueueSubscriptions,
 } from '../services/backendApi'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -47,6 +48,7 @@ export default function QueuesPage() {
     try {
       const data = await listQueues()
       setQueues(data)
+      syncQueueSubscriptions(socketRef.current, data.map(queue => queue.id))
       setOnline(true)
     } catch {
       setOnline(false)
@@ -57,10 +59,6 @@ export default function QueuesPage() {
 
   useEffect(() => {
     ensureAdminToken()
-    fetchQueues()
-    const interval = setInterval(fetchQueues, 8000)
-
-    // Socket.IO live update
     try {
       const socket = createSocketConnection()
       if (socket) {
@@ -68,6 +66,8 @@ export default function QueuesPage() {
         socket.on('queue:updated', () => fetchQueues())
       }
     } catch { /* socket not available */ }
+    fetchQueues()
+    const interval = setInterval(fetchQueues, 8000)
 
     return () => {
       clearInterval(interval)

@@ -38,6 +38,8 @@ const api = axios.create({
   timeout: 10000,
 })
 
+const socketQueueSubscriptions = new WeakMap()
+
 function extractApiError(error, fallbackMessage = 'Request failed') {
   return error?.response?.data?.message ?? error?.message ?? fallbackMessage
 }
@@ -139,4 +141,32 @@ export function createSocketConnection() {
   return io ? io(SOCKET_URL, { transports: ['websocket'] }) : null
 }
 
-export { API_BASE, SOCKET_URL, REALTIME_ENABLED, api, extractApiError, createPollingSubscription }
+export function syncQueueSubscriptions(socket, queueIds = []) {
+  if (!socket) return
+
+  const nextQueueIds = new Set(queueIds.filter(Boolean))
+  const currentQueueIds = socketQueueSubscriptions.get(socket) ?? new Set()
+
+  currentQueueIds.forEach(queueId => {
+    if (!nextQueueIds.has(queueId)) {
+      socket.emit('queue:unsubscribe', queueId)
+    }
+  })
+
+  nextQueueIds.forEach(queueId => {
+    if (!currentQueueIds.has(queueId)) {
+      socket.emit('queue:subscribe', queueId)
+    }
+  })
+
+  socketQueueSubscriptions.set(socket, nextQueueIds)
+}
+
+export {
+  API_BASE,
+  SOCKET_URL,
+  REALTIME_ENABLED,
+  api,
+  extractApiError,
+  createPollingSubscription,
+}
