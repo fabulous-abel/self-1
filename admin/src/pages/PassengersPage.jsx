@@ -6,6 +6,7 @@ import {
   adminRemovePassenger,
   ensureAdminToken,
   createSocketConnection,
+  syncQueueSubscriptions,
 } from '../services/backendApi'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -39,6 +40,7 @@ export default function PassengersPage() {
   const fetchAll = async () => {
     try {
       const queues = await listQueues()
+      syncQueueSubscriptions(socketRef.current, queues.map(queue => queue.id))
       setOnline(true)
 
       // Fetch detail for each queue in parallel to get entries
@@ -71,9 +73,6 @@ export default function PassengersPage() {
 
   useEffect(() => {
     ensureAdminToken()
-    fetchAll()
-    const interval = setInterval(fetchAll, 8000)
-
     try {
       const socket = createSocketConnection()
       if (socket) {
@@ -81,6 +80,8 @@ export default function PassengersPage() {
         socket.on('queue:updated', fetchAll)
       }
     } catch { /* optional */ }
+    fetchAll()
+    const interval = setInterval(fetchAll, 8000)
 
     return () => {
       clearInterval(interval)
