@@ -33,3 +33,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Java heap dumps
+*.hprof
