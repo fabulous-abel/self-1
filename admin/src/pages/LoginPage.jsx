@@ -1,8 +1,10 @@
 import { useState } from 'react'
+import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
 export default function LoginPage() {
   const { login } = useAuth()
+  const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -15,6 +17,7 @@ export default function LoginPage() {
 
     try {
       await login(email, password)
+      navigate('/dashboard')
     } catch (err) {
       setError(err?.message || 'Unable to sign in.')
     } finally {
@@ -26,7 +29,7 @@ export default function LoginPage() {
     <div style={styles.root}>
       <div style={styles.shell}>
         <section style={styles.leftPanel}>
-          <div style={styles.logoWrap}>
+          <Link to="/" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 14 }}>
             <div style={styles.logoCircle}>
               <span style={{ fontSize: 28, fontWeight: 900, color: '#67e8f9' }}>L</span>
             </div>
@@ -34,7 +37,8 @@ export default function LoginPage() {
               <div style={styles.logoTitle}>LinkEt Admin</div>
               <div style={styles.logoSub}>Backend dispatch workspace</div>
             </div>
-          </div>
+          </Link>
+
 
           <div style={styles.eyebrow}>Operations Hub</div>
           <h1 style={styles.heroTitle}>Run queue operations from a focused left-right control surface.</h1>

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AlertCircle, Activity, List, LogOut, MapPin, Users, Users2 } from 'lucide-react'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import ActivityPage from './pages/ActivityPage'
@@ -8,20 +9,22 @@ import NotificationsPage from './pages/NotificationsPage'
 import PassengersPage from './pages/PassengersPage'
 import QueuesPage from './pages/QueuesPage'
 import UsersPage from './pages/UsersPage'
+import LandingPage from './pages/LandingPage'
+
+function ProtectedRoute({ children }) {
+  const { user } = useAuth()
+  if (user === undefined) return (
+    <div style={loadingStyles.root}>
+      <div style={loadingStyles.text}>Loading...</div>
+    </div>
+  )
+  if (!user) return <Navigate to="/login" replace />
+  return children
+}
 
 function AppShell() {
   const { user, logout } = useAuth()
   const [page, setPage] = useState('locations')
-
-  if (user === undefined) {
-    return (
-      <div style={loadingStyles.root}>
-        <div style={loadingStyles.text}>Loading...</div>
-      </div>
-    )
-  }
-
-  if (!user) return <LoginPage />
 
   return (
     <div style={styles.root}>
@@ -30,7 +33,7 @@ function AppShell() {
           <div style={styles.logoCircle}>L</div>
           <div>
             <div style={styles.logoTitle}>LinkEt Admin</div>
-            <div style={styles.logoSub}>{user.email}</div>
+            <div style={styles.logoSub}>{user?.email}</div>
           </div>
         </div>
 
@@ -73,7 +76,22 @@ function NavBtn({ icon, label, active, onClick }) {
 export default function App() {
   return (
     <AuthProvider>
-      <AppShell />
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route 
+            path="/dashboard" 
+            element={
+              <ProtectedRoute>
+                <AppShell />
+              </ProtectedRoute>
+            } 
+          />
+          {/* Catch all redirect to home */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </BrowserRouter>
     </AuthProvider>
   )
 }
@@ -196,3 +214,4 @@ const styles = {
     marginBottom: 28,
   },
 }
+
