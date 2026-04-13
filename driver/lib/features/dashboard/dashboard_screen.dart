@@ -25,6 +25,7 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
   late DriverProfile _profile;
   Map<String, dynamic>? _dashboard;
   Timer? _timer;
+  VoidCallback? _cancelDashboardSub;
   Set<String> _knownQueueEntryIds = <String>{};
   int _tab = 0;
   bool _loading = true;
@@ -41,12 +42,21 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
   @override
   void dispose() {
     _timer?.cancel();
+    _cancelDashboardSub?.call();
+    _tripService.disconnectSocket();
     super.dispose();
   }
 
   Future<void> _bootstrap() async {
     await _loadDashboard(showLoading: true);
     if (!mounted) return;
+    _cancelDashboardSub = _tripService.subscribeToDashboard(
+      token: _profile.token,
+      onDashboard: (dashboard) {
+        if (!mounted) return;
+        _applyDashboard(dashboard);
+      },
+    );
     _timer = Timer.periodic(
       const Duration(seconds: 8),
       (_) => _loadDashboard(),
@@ -57,6 +67,8 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
   Map<String, dynamic> get _queue => _map(_dashboard?['queue']);
   Map<String, dynamic> get _ride => _map(_dashboard?['activeRide']);
   Map<String, dynamic> get _earnings => _map(_dashboard?['earnings']);
+  List<Map<String, dynamic>> get _availableQueues =>
+      _list(_dashboard?['availableQueues']);
   List<Map<String, dynamic>> get _entries => _list(_dashboard?['entries']);
 
   bool get _online =>
@@ -100,8 +112,11 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
   }
 
   void _applyDashboard(Map<String, dynamic> dashboard) {
+    final previousRideId = _text(_ride['id']);
     final driver = _map(dashboard['driver']);
     final queue = _map(driver['queue'] ?? dashboard['queue']);
+    final nextRide = _map(dashboard['activeRide']);
+    final nextRideId = _text(nextRide['id']);
     final vehicle = _map(driver['vehicle']);
     final nextEntries = _list(dashboard['entries']);
     final nextEntryIds = _entryIds(nextEntries);
@@ -135,6 +150,10 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
     });
 
     if (wasOnline && nextOnline && addedEntryIds.isNotEmpty) {
+      unawaited(_tripService.playQueueArrivalAlert());
+    }
+
+    if (nextRideId != null && nextRideId != previousRideId) {
       unawaited(_tripService.playQueueArrivalAlert());
     }
   }
@@ -185,6 +204,33 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
     }
   }
 
+  Future<void> _switchQueue(String queueId) async {
+    if (_busy) return;
+    if (_text(_queue['id']) == queueId) return;
+    setState(() => _busy = true);
+
+    try {
+      final result = await _tripService.updateQueue(
+        token: _profile.token,
+        queueId: queueId,
+      );
+      final dashboard = _map(result['dashboard']);
+      if (dashboard.isNotEmpty) {
+        _applyDashboard(dashboard);
+      }
+      if (mounted) {
+        final queue = _map(result['queue']);
+        _message('Switched to ${_text(queue['name']) ?? 'selected place'}');
+      }
+    } on SessionExpiredException {
+      await _logout();
+    } on BackendApiException catch (error) {
+      if (mounted) _message(error.message);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _updateRide(String status) async {
     final rideId = _text(_ride['id']);
     if (_busy || rideId == null || rideId.isEmpty) return;
@@ -214,6 +260,8 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
 
   Future<void> _logout() async {
     _timer?.cancel();
+    _cancelDashboardSub?.call();
+    _tripService.disconnectSocket();
     await _authService.clearSession();
     if (!mounted) return;
     Navigator.of(context).pushReplacement(
@@ -501,6 +549,38 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
     );
   }
 
+  Widget _queueChoiceCard(Map<String, dynamic> queue) {
+    final queueId = _text(queue['id']) ?? '';
+    final selected = queueId.isNotEmpty && queueId == _text(_queue['id']);
+
+    return Card(
+      color: selected ? const Color(0xFFF5FBFB) : null,
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: const Color(0xFFEAF5F4),
+          child: Icon(
+            selected ? Icons.check_rounded : Icons.place_rounded,
+            color: DriverColors.teal,
+          ),
+        ),
+        title: Text(_text(queue['name']) ?? 'Place'),
+        subtitle: Text(
+          '${_int(queue['waitingCount'])} waiting · ${_int(queue['averageWaitMinutes'])} min avg',
+        ),
+        trailing: selected
+            ? const Chip(label: Text('Current'))
+            : TextButton(
+                onPressed: _busy || queueId.isEmpty
+                    ? null
+                    : () {
+                        _switchQueue(queueId);
+                      },
+                child: const Text('Switch'),
+              ),
+      ),
+    );
+  }
+
   Widget _homeTab() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -562,12 +642,34 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
             child: const Text('Accept next passenger'),
           ),
         const SizedBox(height: 12),
+        const Text(
+          'Available places',
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 10),
+        if (_availableQueues.isEmpty)
+          const Text('No places are available right now.')
+        else
+          ..._availableQueues.map(
+            (queue) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _queueChoiceCard(queue),
+            ),
+          ),
+        const SizedBox(height: 8),
+        const Text(
+          'Waiting passengers',
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 10),
         ..._entries.asMap().entries.map(
           (entry) => Padding(
             padding: const EdgeInsets.only(bottom: 12),
             child: _entryCard(entry.value, highlight: entry.key == 0),
           ),
         ),
+        if (_entries.isEmpty)
+          const Text('No riders are waiting in this place.'),
       ],
     );
   }

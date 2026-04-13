@@ -180,79 +180,38 @@ function createSeedEntries(queueId, passengers) {
   });
 }
 
-function seedQueues() {
-  const seedData = [
-    {
-      id: "bole-airport",
-      name: "Bole Airport Stand",
-      type: "Taxi",
-      averageWaitMinutes: 15,
-      capacity: 4,
-      location: {
-        latitude: 8.9838,
-        longitude: 38.7993,
-      },
-      passengers: [
-        {
-          name: "Hana M.",
-          phone: "+251911000101",
-          pickupLabel: "Bole Terminal 1",
-          destinationLabel: "Kazanchis",
-        },
-        {
-          name: "Dawit K.",
-          phone: "+251911000102",
-          pickupLabel: "Bole Rwanda Road",
-          destinationLabel: "Mexico Square",
-        },
-        {
-          name: "Marta S.",
-          phone: "+251911000103",
-          pickupLabel: "Edna Mall Main Gate",
-          destinationLabel: "CMC Roundabout",
-        },
-      ],
-    },
-    {
-      id: "mexico-square",
-      name: "Mexico Square Hub",
-      type: "Bus",
-      averageWaitMinutes: 8,
-      capacity: 12,
-      location: {
-        latitude: 9.0108,
-        longitude: 38.7615,
-      },
-      passengers: [
-        {
-          name: "Abebe T.",
-          phone: "+251911000104",
-          pickupLabel: "Mexico Square South Gate",
-          destinationLabel: "Piassa",
-        },
-      ],
-    },
-    {
-      id: "piassa-hub",
-      name: "Piassa Square",
-      type: "Bus",
-      averageWaitMinutes: 6,
-      capacity: 10,
-      location: {
-        latitude: 9.0417,
-        longitude: 38.7461,
-      },
-      passengers: [],
-    },
-  ];
+function buildDispatchQueueLocation(index) {
+  const row = Math.floor(index / 3);
+  const column = index % 3;
 
-  seedData.forEach((queue) => {
-    queues.set(queue.id, {
-      ...queue,
-      _id: queue.id,
-      entries: createSeedEntries(queue.id, queue.passengers),
-    });
-  });
+  return {
+    latitude: 8.985 + (row * 0.014) + (column * 0.0055),
+    longitude: 38.755 + (column * 0.011) + (row * 0.0045),
+  };
+}
+
+function createQueueRecord({
+  id = createId("queue"),
+  name,
+  type = "Dispatch",
+  averageWaitMinutes = 8,
+  capacity = 4,
+  location = buildDispatchQueueLocation(queues.size),
+  passengers = [],
+}) {
+  const queue = {
+    id,
+    _id: id,
+    name,
+    type,
+    averageWaitMinutes,
+    capacity,
+    location: serializeLocation(location),
+    entries: createSeedEntries(id, passengers),
+  };
+
+  queues.set(queue.id, queue);
+  return queue;
 }
 
 function getQueue(queueId) {
@@ -260,7 +219,7 @@ function getQueue(queueId) {
 }
 
 function defaultQueueId() {
-  return "bole-airport";
+  return Array.from(queues.values())[0]?.id || "";
 }
 
 function createDriverRecord({
@@ -316,9 +275,6 @@ function seedDrivers() {
     status: "offline",
   });
 }
-
-seedQueues();
-seedDrivers();
 
 function sortByNewest(items) {
   return items
@@ -506,6 +462,7 @@ function serializeDispatchLocation(location) {
   return {
     id: location.id,
     name: location.name,
+    queueId: location.queueId || "",
     createdAt: location.createdAt || null,
     updatedAt: location.updatedAt || null,
   };
@@ -535,9 +492,14 @@ function createDispatchLocationRecord(name) {
   }
 
   const timestamp = nowIso();
+  const queue = createQueueRecord({
+    name: cleanName,
+    location: buildDispatchQueueLocation(queues.size),
+  });
   const location = {
     id: createId("dispatch_location"),
     name: cleanName,
+    queueId: queue.id,
     createdAt: timestamp,
     updatedAt: timestamp,
   };
@@ -671,6 +633,7 @@ function updateDispatchLocationRecord(locationId, locationName) {
   }
 
   if (location.name !== cleanName) {
+    const previousName = location.name;
     const state = ensureDispatchState(location.name);
     dispatchStateByLocation.delete(location.name);
 
@@ -686,6 +649,25 @@ function updateDispatchLocationRecord(locationId, locationName) {
 
     dispatchStateByLocation.set(cleanName, state);
     location.name = cleanName;
+
+    const queue = getQueue(location.queueId);
+    if (queue) {
+      queue.name = cleanName;
+      queue.entries.forEach((entry) => {
+        if (!entry.pickupLabel || entry.pickupLabel === previousName) {
+          entry.pickupLabel = cleanName;
+        }
+      });
+    }
+
+    Array.from(rides.values()).forEach((ride) => {
+      if (
+        String(ride.queueId) === String(location.queueId) &&
+        (!ride.pickupLabel || ride.pickupLabel === previousName)
+      ) {
+        ride.pickupLabel = cleanName;
+      }
+    });
   }
 
   location.updatedAt = nowIso();
@@ -724,8 +706,41 @@ function deleteDispatchLocationRecord(locationId) {
     );
   }
 
+  const queue = getQueue(location.queueId);
+  if (queue && queue.entries.length > 0) {
+    throw createStatusError(
+      400,
+      "Cannot delete a place while passengers are still waiting in the mobile queue.",
+    );
+  }
+
+  const assignedDriver = Array.from(drivers.values()).find(
+    (driver) => String(driver.queueId) === String(location.queueId),
+  );
+  if (assignedDriver) {
+    throw createStatusError(
+      400,
+      "Cannot delete a place while a driver is still assigned to it.",
+    );
+  }
+
+  const activeRide = Array.from(rides.values()).find(
+    (ride) =>
+      String(ride.queueId) === String(location.queueId) &&
+      String(ride.status || "").toLowerCase() !== "completed",
+  );
+  if (activeRide) {
+    throw createStatusError(
+      400,
+      "Cannot delete a place while it still has an active matched ride.",
+    );
+  }
+
   dispatchLocations.delete(location.id);
   dispatchStateByLocation.delete(location.name);
+  if (queue) {
+    queues.delete(queue.id);
+  }
 
   return serializeDispatchLocation(location);
 }
@@ -893,6 +908,7 @@ function seedDispatchState() {
 
 seedManagedUsers();
 seedDispatchState();
+seedDrivers();
 
 function getDriverByUserId(userId) {
   const driverId = driversByUserId.get(String(userId));
@@ -1052,6 +1068,7 @@ function getDriverDashboard(userId) {
   return {
     driver: serializeDriver(driver),
     queue: queue ? summarizeQueue(queue) : null,
+    availableQueues: listQueues(),
     entries: queue ? queue.entries.map(serializeDriverQueueEntry) : [],
     activeRide: serializeRide(activeRide),
     earnings: serializeEarnings(driver),
@@ -1070,6 +1087,17 @@ function emitDriverDashboard(io, userId) {
   }
 
   io.to(`user:${userId}`).emit("driver:dashboard", payload);
+}
+
+function emitPassengerRideMatch(io, passengerId, ride) {
+  if (!io || !ride || !passengerId) {
+    return;
+  }
+
+  io.to(`user:${passengerId}`).emit("ride:matched", {
+    ride,
+    matchedAt: nowIso(),
+  });
 }
 
 function emitDriverDashboardsForQueue(io, queueId) {
@@ -1181,7 +1209,7 @@ function getUserById(userId) {
 }
 
 function listQueues() {
-  return Array.from(queues.values()).map(summarizeQueue);
+  return sortByName(Array.from(queues.values()).map(summarizeQueue));
 }
 
 function getQueueDetails(queueId) {
@@ -1359,6 +1387,38 @@ function setDriverAvailability({ userId, online, io }) {
   return getDriverDashboard(userId);
 }
 
+function setDriverQueue({ userId, queueId, io }) {
+  const driver = getDriverByUserId(userId);
+
+  if (!driver) {
+    return null;
+  }
+
+  if (driver.activeRideId) {
+    return {
+      error: "Complete the active ride before changing your place.",
+      dashboard: getDriverDashboard(userId),
+    };
+  }
+
+  const queue = getQueue(queueId);
+  if (!queue) {
+    return {
+      error: "Selected place was not found.",
+      dashboard: getDriverDashboard(userId),
+    };
+  }
+
+  driver.queueId = queue.id;
+  driver.updatedAt = nowIso();
+  emitDriverDashboard(io, userId);
+
+  return {
+    queue: summarizeQueue(queue),
+    dashboard: getDriverDashboard(userId),
+  };
+}
+
 function acceptNextPassenger({ userId, io }) {
   const driver = getDriverByUserId(userId);
 
@@ -1403,6 +1463,7 @@ function acceptNextPassenger({ userId, io }) {
   });
 
   emitDriverDashboard(io, userId);
+  emitPassengerRideMatch(io, nextEntry.passengerId, ride);
 
   return {
     ride,
@@ -1547,6 +1608,7 @@ module.exports = {
   listQueues,
   normalizePhone,
   removePassengerFromQueue,
+  setDriverQueue,
   setDriverAvailability,
   updateBroadcastRecord,
   updateDispatchLocationRecord,

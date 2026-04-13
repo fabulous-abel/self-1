@@ -13,25 +13,25 @@ class BackendApiException implements Exception {
 
 class SessionExpiredException extends BackendApiException {
   SessionExpiredException()
-      : super('Your backend session expired. Please log in again.');
+    : super('Your backend session expired. Please log in again.');
 }
 
 class BackendApiClient {
   BackendApiClient({Dio? dio})
-      : _dio =
-            dio ??
-            Dio(
-              BaseOptions(
-                baseUrl: _baseUrl,
-                connectTimeout: const Duration(seconds: 15),
-                receiveTimeout: const Duration(seconds: 15),
-                sendTimeout: const Duration(seconds: 15),
-                headers: const <String, dynamic>{
-                  'Accept': 'application/json',
-                  'Content-Type': 'application/json',
-                },
-              ),
-            );
+    : _dio =
+          dio ??
+          Dio(
+            BaseOptions(
+              baseUrl: _baseUrl,
+              connectTimeout: const Duration(seconds: 15),
+              receiveTimeout: const Duration(seconds: 15),
+              sendTimeout: const Duration(seconds: 15),
+              headers: const <String, dynamic>{
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+              },
+            ),
+          );
 
   static const String sessionBoxName = 'driver_backend_session';
   static const String sessionTokenKey = 'token';
@@ -44,7 +44,9 @@ class BackendApiClient {
   }
 
   static String get _baseUrl {
-    final configured = _trimTrailingSlash((dotenv.env['API_BASE_URL'] ?? '').trim());
+    final configured = _trimTrailingSlash(
+      (dotenv.env['API_BASE_URL'] ?? '').trim(),
+    );
     if (configured.isNotEmpty) {
       final uri = Uri.tryParse(configured);
       if (uri != null && uri.hasScheme && uri.host.isNotEmpty) {
@@ -59,7 +61,7 @@ class BackendApiClient {
       return configured;
     }
 
-    return 'http://10.0.2.2:3000/api';
+    return 'http://10.0.2.2:5000/api';
   }
 
   Future<Box<dynamic>> _sessionBox() async {
@@ -147,22 +149,22 @@ class BackendApiClient {
 
       final response = switch (method) {
         'GET' => await _dio.get<dynamic>(
-            path,
-            options: options,
-            queryParameters: queryParameters,
-          ),
+          path,
+          options: options,
+          queryParameters: queryParameters,
+        ),
         'POST' => await _dio.post<dynamic>(
-            path,
-            data: data,
-            options: options,
-            queryParameters: queryParameters,
-          ),
+          path,
+          data: data,
+          options: options,
+          queryParameters: queryParameters,
+        ),
         'PATCH' => await _dio.patch<dynamic>(
-            path,
-            data: data,
-            options: options,
-            queryParameters: queryParameters,
-          ),
+          path,
+          data: data,
+          options: options,
+          queryParameters: queryParameters,
+        ),
         _ => throw BackendApiException('Unsupported request method: $method'),
       };
 

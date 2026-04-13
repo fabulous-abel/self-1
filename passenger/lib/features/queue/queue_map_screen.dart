@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter/services.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../core/services/queue_api_service.dart';
@@ -29,7 +32,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
     Icons.history_rounded,
     Icons.person_rounded,
   ];
-  static const _queues = [
+  static const _fallbackQueues = [
     _QueueItem(
       backendId: 'bole-airport',
       title: 'Bole Airport Stand',
@@ -78,6 +81,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
   final DraggableScrollableController _sheetController =
       DraggableScrollableController();
   late final TextEditingController _searchController;
+  late List<_QueueItem> _queues;
 
   int _selectedTab = 0;
   late _QueueItem _selectedQueue;
@@ -85,7 +89,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
   String _query = '';
   double _sheetExtent = 0.38;
   double _mapZoom = 13.4;
-  LatLng _mapCenter = _queues.first.point;
+  LatLng _mapCenter = _fallbackQueues.first.point;
 
   // ── Live queue state ───────────────────────────────────────────
   String? _activeQueueId; // backend ID of the joined queue
@@ -94,14 +98,17 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
   bool _yourTurn = false;
   bool _isJoining = false;
   bool _isLeaving = false;
+  MatchedRide? _matchedRide;
   VoidCallback? _cancelSocketSub; // call to unsubscribe
 
   @override
   void initState() {
     super.initState();
     _searchController = TextEditingController();
+    _queues = List<_QueueItem>.of(_fallbackQueues);
     _selectedQueue = _queues.first;
     _expandedQueueId = _selectedQueue.backendId;
+    unawaited(_loadQueues());
   }
 
   @override
@@ -116,6 +123,113 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
 
   List<_QueueItem> get _visibleQueues => _filterQueues(_query);
 
+  Future<void> _loadQueues() async {
+    try {
+      final summaries = await QueueApiService.instance.listQueues();
+      if (!mounted) return;
+
+      if (summaries.isEmpty) {
+        return;
+      }
+
+      final nextQueues = summaries
+          .asMap()
+          .entries
+          .map((entry) => _queueFromSummary(entry.value, entry.key))
+          .toList();
+      final selectedQueue =
+          nextQueues.any((queue) => queue.backendId == _selectedQueue.backendId)
+          ? nextQueues.firstWhere(
+              (queue) => queue.backendId == _selectedQueue.backendId,
+            )
+          : nextQueues.first;
+      final hasExpandedQueue =
+          _expandedQueueId != null &&
+          nextQueues.any((queue) => queue.backendId == _expandedQueueId);
+      final hasActiveQueue =
+          _activeQueueId != null &&
+          nextQueues.any((queue) => queue.backendId == _activeQueueId);
+
+      setState(() {
+        _queues = nextQueues;
+        _selectedQueue = selectedQueue;
+        _expandedQueueId = hasExpandedQueue
+            ? _expandedQueueId
+            : selectedQueue.backendId;
+        if (!hasActiveQueue) {
+          _activeQueueId = null;
+          _queuePosition = null;
+          _estimatedWaitMinutes = null;
+          _yourTurn = false;
+        }
+      });
+    } catch (error) {
+      debugPrint('[PassengerMap] queue sync failed: $error');
+      if (!mounted) return;
+    }
+  }
+
+  _QueueItem _queueFromSummary(QueueSummary summary, int index) {
+    final point = (summary.latitude == 0 && summary.longitude == 0)
+        ? _fallbackPoint(index)
+        : LatLng(summary.latitude, summary.longitude);
+    final color = <Color>[
+      PassengerColors.orange,
+      PassengerColors.blue,
+      PassengerColors.peach,
+      PassengerColors.teal,
+    ][index % 4];
+    final icon = _iconForQueueType(summary.type);
+    final keywords = summary.name
+        .toLowerCase()
+        .split(RegExp(r'\s+'))
+        .where((part) => part.isNotEmpty)
+        .toList();
+
+    return _QueueItem(
+      backendId: summary.id,
+      title: summary.name,
+      subtitle: '${summary.type} queue synced from admin places.',
+      route: 'Pickup at ${summary.name}',
+      waitTime: '${summary.averageWaitMinutes} min',
+      seatsOpen: summary.capacity > 0 ? summary.capacity : 4,
+      distance: summary.waitingCount == 0
+          ? 'No one waiting'
+          : '${summary.waitingCount} waiting',
+      pickupNote: 'Live pickup point managed from the admin panel.',
+      color: color,
+      icon: icon,
+      point: point,
+      keywords: <String>[
+        ...keywords,
+        summary.type.toLowerCase(),
+        'queue',
+        'pickup',
+        'dispatch',
+      ],
+    );
+  }
+
+  LatLng _fallbackPoint(int index) {
+    final row = index ~/ 3;
+    final column = index % 3;
+    return LatLng(
+      8.985 + (row * 0.014) + (column * 0.0055),
+      38.755 + (column * 0.011) + (row * 0.0045),
+    );
+  }
+
+  IconData _iconForQueueType(String type) {
+    final normalized = type.toLowerCase();
+    if (normalized.contains('bus')) {
+      return Icons.directions_bus_filled_rounded;
+    }
+    if (normalized.contains('taxi')) {
+      return Icons.local_taxi_rounded;
+    }
+    return Icons.groups_rounded;
+  }
+
   List<_QueueItem> _filterQueues(String query) {
     final normalized = query.trim().toLowerCase();
     if (normalized.isEmpty) {
@@ -129,6 +243,53 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _playMatchAlert() async {
+    try {
+      await HapticFeedback.vibrate();
+      await SystemSound.play(SystemSoundType.alert);
+    } catch (_) {}
+  }
+
+  void _applyPositionUpdate(PositionUpdate update, _QueueItem queue) {
+    final becameYourTurn = !_yourTurn && update.yourTurn;
+
+    setState(() {
+      _queuePosition = update.position;
+      _estimatedWaitMinutes = update.estimatedWaitMinutes;
+      _yourTurn = update.yourTurn;
+    });
+
+    if (becameYourTurn) {
+      unawaited(_playMatchAlert());
+      _showMessage('It is your turn. Head to ${queue.title}.');
+    }
+  }
+
+  void _handleMatchedRide(MatchedRide ride) {
+    _cancelSocketSub?.call();
+    _cancelSocketSub = null;
+
+    final matchedQueue = _queues.any((queue) => queue.backendId == ride.queueId)
+        ? _queues.firstWhere((queue) => queue.backendId == ride.queueId)
+        : _selectedQueue;
+
+    setState(() {
+      _matchedRide = ride;
+      _selectedQueue = matchedQueue;
+      _expandedQueueId = matchedQueue.backendId;
+      _activeQueueId = null;
+      _queuePosition = null;
+      _estimatedWaitMinutes = null;
+      _yourTurn = false;
+      _selectedTab = 1;
+    });
+
+    unawaited(_playMatchAlert());
+    _showMessage(
+      'Matched with ${ride.driverName}. Pickup at ${ride.pickupLabel}.',
+    );
   }
 
   void _onSearchChanged(String value) {
@@ -194,6 +355,10 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
       _showMessage('Server offline — cannot join queue right now.');
       return;
     }
+    if (_matchedRide != null) {
+      _showMessage('A driver is already assigned to you.');
+      return;
+    }
     if (_activeQueueId != null) {
       _showMessage('Leave your current queue first.');
       return;
@@ -214,7 +379,12 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
         _queuePosition = result.position;
         _estimatedWaitMinutes = result.estimatedWaitMinutes;
         _yourTurn = result.yourTurn;
+        _matchedRide = null;
       });
+
+      if (result.yourTurn) {
+        unawaited(_playMatchAlert());
+      }
 
       // Subscribe to real-time position updates
       _cancelSocketSub?.call();
@@ -223,12 +393,9 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
         token,
         (update) {
           if (!mounted) return;
-          setState(() {
-            _queuePosition = update.position;
-            _estimatedWaitMinutes = update.estimatedWaitMinutes;
-            _yourTurn = update.yourTurn;
-          });
+          _applyPositionUpdate(update, queue);
         },
+        _handleMatchedRide,
       );
 
       final pos = result.position;
@@ -366,7 +533,9 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
         : _queues.where((q) => q.backendId == _activeQueueId).firstOrNull;
 
     Widget? statusCard;
-    if (activeQueue != null && _queuePosition != null) {
+    if (_matchedRide != null) {
+      statusCard = _MatchedRideCard(ride: _matchedRide!);
+    } else if (activeQueue != null && _queuePosition != null) {
       statusCard = _LiveStatusCard(
         queue: activeQueue,
         position: _queuePosition!,
@@ -658,7 +827,9 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                               )
                             : FilledButton.icon(
                                 onPressed:
-                                    (_isJoining || _activeQueueId != null)
+                                    (_isJoining ||
+                                        _activeQueueId != null ||
+                                        _matchedRide != null)
                                     ? null
                                     : () => _joinQueue(_selectedQueue),
                                 icon: _isJoining
@@ -709,7 +880,9 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                               )
                             : FilledButton.icon(
                                 onPressed:
-                                    (_isJoining || _activeQueueId != null)
+                                    (_isJoining ||
+                                        _activeQueueId != null ||
+                                        _matchedRide != null)
                                     ? null
                                     : () => _joinQueue(_selectedQueue),
                                 icon: _isJoining
@@ -784,7 +957,8 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
   }) {
     final selected = queue == _selectedQueue;
     final isThisActive = queue.backendId == _activeQueueId;
-    final canJoin = !_isJoining && _activeQueueId == null;
+    final canJoin =
+        !_isJoining && _activeQueueId == null && _matchedRide == null;
     final expanded = _expandedQueueId == queue.backendId;
     final joiningThisQueue = _isJoining && queue == _selectedQueue;
     final leavingThisQueue = _isLeaving && isThisActive;
@@ -1439,6 +1613,86 @@ class _TopButton extends StatelessWidget {
 
 // ── Live Status Card ──────────────────────────────────────────────────────────
 
+class _MatchedRideCard extends StatelessWidget {
+  const _MatchedRideCard({required this.ride});
+
+  final MatchedRide ride;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: PassengerColors.orange.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: PassengerColors.orange.withValues(alpha: 0.28),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            height: 52,
+            width: 52,
+            decoration: BoxDecoration(
+              color: PassengerColors.orange.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: const Icon(
+              Icons.local_taxi_rounded,
+              color: PassengerColors.orange,
+              size: 24,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Driver matched',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: PassengerColors.orange,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  '${ride.driverName} · ${ride.vehiclePlate.isEmpty ? 'Vehicle pending' : ride.vehiclePlate}',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF4A6080),
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  ride.pickupLabel.isEmpty
+                      ? 'Pickup confirmed'
+                      : 'Pickup at ${ride.pickupLabel}',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF4A6080),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            ride.fareEtb <= 0 ? '' : 'ETB ${ride.fareEtb.toStringAsFixed(0)}',
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+              color: PassengerColors.orange,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _LiveStatusCard extends StatelessWidget {
   const _LiveStatusCard({
     required this.queue,
@@ -1812,7 +2066,7 @@ class EmptySearchState extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            'No queue matched "$query". Try Bole, Mexico, Kazanchis, airport, or bus.',
+            'No queue matched "$query". Try the place name, pickup area, or queue type.',
             style: const TextStyle(
               fontSize: 13,
               color: Color(0xFF5F7392),

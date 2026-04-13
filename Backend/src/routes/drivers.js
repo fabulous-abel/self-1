@@ -6,6 +6,7 @@ const {
   getDriverDashboard,
   getDriverEarnings,
   getDriverProfile,
+  setDriverQueue,
   setDriverAvailability,
   updateDriverRideStatus,
   updateDriverVehicle,
@@ -74,6 +75,37 @@ router.patch("/me/status", (req, res) => {
   }
 
   return res.json(dashboard);
+});
+
+router.patch("/me/queue", (req, res) => {
+  const queueId = String(req.body.queueId || "").trim();
+
+  if (!queueId) {
+    return res.status(400).json({
+      message: "queueId is required",
+    });
+  }
+
+  const result = setDriverQueue({
+    userId: req.user.id,
+    queueId,
+    io: req.app.get("io"),
+  });
+
+  if (!result) {
+    return res.status(404).json({
+      message: "Driver profile not found",
+    });
+  }
+
+  if (result.error) {
+    return res.status(409).json({
+      message: result.error,
+      dashboard: result.dashboard,
+    });
+  }
+
+  return res.json(result);
 });
 
 router.post("/me/queue/accept-next", (req, res) => {
