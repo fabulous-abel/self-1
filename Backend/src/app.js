@@ -15,8 +15,13 @@ const isVercel =
   process.env.VERCEL === "1" ||
   process.env.VERCEL === "true" ||
   process.env.VERCEL_ENV !== undefined;
+const defaultOrigins = [
+  "http://localhost:5173",
+  "https://fabulous-abel-self-1.vercel.app",
+  "https://self-1-*.vercel.app",
+].join(",");
 const corsOrigins = parseOrigins(
-  process.env.CLIENT_URL || process.env.SOCKET_CORS_ORIGIN || "*",
+  process.env.CLIENT_URL || process.env.SOCKET_CORS_ORIGIN || defaultOrigins,
 );
 
 app.disable("x-powered-by");
