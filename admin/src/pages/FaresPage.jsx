@@ -1,32 +1,56 @@
 import { useEffect, useState } from 'react'
-import { Banknote, Save } from 'lucide-react'
+import { Plus, Save, Trash2 } from 'lucide-react'
 import { getFareSettings, updateFareSettings } from '../services/backendApi'
+import { subscribeToDispatchLocations } from '../lib/locationQueueService'
 
 export default function FaresPage() {
   const [fares, setFares] = useState({
     currency: 'ETB',
-    baseFare: 0,
-    perKmRate: 0,
-    perMinRate: 0,
-    platformCommissionPercent: 0,
-    surgeMultiplier: 1.0,
+    platformCommissionPercent: 10,
+    routeFares: [],
   })
   
+  const [locations, setLocations] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+  
+  const [newRoute, setNewRoute] = useState({ pickup: '', offboarding: '', amount: '' })
 
   useEffect(() => {
     loadFares()
+    
+    const unsubscribeLocations = subscribeToDispatchLocations({
+      onLocations: (items) => {
+        setLocations(items || [])
+        if (items && items.length > 0 && !newRoute.pickup) {
+          setNewRoute((prev) => ({ ...prev, pickup: items[0].name }))
+        }
+      },
+    })
+    
+    return () => {
+      unsubscribeLocations()
+    }
   }, [])
+  
+  useEffect(() => {
+    if (locations.length > 0 && !newRoute.pickup) {
+      setNewRoute((prev) => ({ ...prev, pickup: locations[0].name }))
+    }
+  }, [locations])
 
   async function loadFares() {
     setLoading(true)
     setError('')
     try {
       const data = await getFareSettings()
-      setFares(data)
+      setFares({
+        currency: data.currency || 'ETB',
+        platformCommissionPercent: data.platformCommissionPercent || 10,
+        routeFares: data.routeFares || [],
+      })
     } catch (err) {
       setError(err?.message || 'Unable to load fare configurations.')
     } finally {
@@ -38,6 +62,35 @@ export default function FaresPage() {
     setFares((prev) => ({ ...prev, [field]: value }))
   }
 
+  const handleAddRoute = () => {
+    if (!newRoute.pickup?.trim() || !newRoute.offboarding?.trim() || !newRoute.amount) {
+      setError('Please fill all route fields.')
+      return
+    }
+    setError('')
+    
+    const newRouteItem = {
+      id: 'route_' + Math.random().toString(36).substr(2, 9),
+      pickup: newRoute.pickup.trim(),
+      offboarding: newRoute.offboarding.trim(),
+      amount: Number(newRoute.amount)
+    }
+    
+    setFares((prev) => ({
+      ...prev,
+      routeFares: [newRouteItem, ...prev.routeFares],
+    }))
+    
+    setNewRoute({ pickup: locations[0]?.name || '', offboarding: '', amount: '' })
+  }
+
+  const handleRemoveRoute = (id) => {
+    setFares((prev) => ({
+      ...prev,
+      routeFares: prev.routeFares.filter(r => r.id !== id),
+    }))
+  }
+
   const handleSave = async (e) => {
     e.preventDefault()
     setSaving(true)
@@ -46,14 +99,16 @@ export default function FaresPage() {
     try {
       const updated = await updateFareSettings({
         currency: fares.currency,
-        baseFare: Number(fares.baseFare),
-        perKmRate: Number(fares.perKmRate),
-        perMinRate: Number(fares.perMinRate),
         platformCommissionPercent: Number(fares.platformCommissionPercent),
-        surgeMultiplier: Number(fares.surgeMultiplier),
+        routeFares: fares.routeFares,
       })
-      setFares(updated)
-      setNotice('Fare settings updated successfully.')
+      
+      setFares({
+        currency: updated.currency || 'ETB',
+        platformCommissionPercent: updated.platformCommissionPercent || 10,
+        routeFares: updated.routeFares || [],
+      })
+      setNotice('Fare routes updated successfully.')
     } catch (err) {
       setError(err?.message || 'Unable to update fare configurations.')
     } finally {
@@ -74,9 +129,9 @@ export default function FaresPage() {
     <div>
       <div style={styles.headerRow}>
         <div>
-          <h1 style={styles.title}>Fare Configuration</h1>
+          <h1 style={styles.title}>Route Fares Configuration</h1>
           <p style={styles.sub}>
-            Manage how the system calculates estimates and final trip costs for your queued drivers.
+            Manage fixed point-to-point pricing combinations based on dispatch pick-up zones and custom offboarding places.
           </p>
         </div>
       </div>
@@ -85,11 +140,103 @@ export default function FaresPage() {
       {error ? <div style={styles.errorBanner}>{error}</div> : null}
 
       <div style={styles.grid}>
-        {/* Base Fares Section */}
-        <div style={styles.sectionCard}>
+        {/* Route Fares Section */}
+        <div style={{...styles.sectionCard, gridColumn: '1 / -1'}}>
           <div style={styles.sectionHeader}>
-            <div style={styles.sectionTitle}>Pricing Structure</div>
-            <div style={styles.sectionSub}>Adjust the base rules to compute point-to-point fares.</div>
+            <div style={styles.sectionTitle}>Point-to-Point Routes</div>
+            <div style={styles.sectionSub}>Add the default prices charged when passenger travels between these zones.</div>
+          </div>
+          
+          <div style={{ padding: '24px 24px 12px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+             <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr) 140px auto', gap: 12, alignItems: 'end' }}>
+                <div>
+                   <label style={styles.label}>Origin (Pick-up)</label>
+                   <select 
+                     value={newRoute.pickup} 
+                     onChange={(e) => setNewRoute({...newRoute, pickup: e.target.value})}
+                     style={styles.input}
+                   >
+                     {locations.map(loc => <option key={loc.id} value={loc.name}>{loc.name}</option>)}
+                     <option value="*Custom">-- Custom text --</option>
+                   </select>
+                   {newRoute.pickup === '*Custom' && (
+                     <input 
+                       placeholder="Type origin..." 
+                       autoFocus
+                       style={{...styles.input, marginTop: 8}}
+                       onChange={(e) => setNewRoute({...newRoute, pickup: e.target.value})}
+                     />
+                   )}
+                </div>
+                <div>
+                   <label style={styles.label}>Destination (Offboarding)</label>
+                   <input
+                     value={newRoute.offboarding}
+                     onChange={(e) => setNewRoute({...newRoute, offboarding: e.target.value})}
+                     placeholder="e.g. City Center"
+                     style={styles.input}
+                   />
+                </div>
+                <div>
+                   <label style={styles.label}>Fare Amount</label>
+                   <div style={{position: 'relative'}}>
+                     <input
+                       type="number"
+                       value={newRoute.amount}
+                       onChange={(e) => setNewRoute({...newRoute, amount: e.target.value})}
+                       placeholder="400"
+                       style={{...styles.input, paddingRight: 45}}
+                     />
+                     <span style={{position: 'absolute', right: 12, top: 12, fontSize: 13, color: '#94a3b8', fontWeight: 600}}>{fares.currency}</span>
+                   </div>
+                </div>
+                <div>
+                   <button onClick={handleAddRoute} style={{...styles.primaryBtn, padding: '12px 16px', marginBottom: 2}}>
+                     <Plus size={16} /> Add
+                   </button>
+                </div>
+             </div>
+          </div>
+          
+          <div style={{ padding: '0px' }}>
+             <div style={styles.tableWrap}>
+                <table style={styles.table}>
+                  <thead>
+                    <tr>
+                      <th style={styles.th}>Origin</th>
+                      <th style={styles.th}>Destination</th>
+                      <th style={styles.th}>Cost</th>
+                      <th style={styles.th}>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {fares.routeFares.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} style={styles.empty}>No fixed routes configured. Add one above.</td>
+                      </tr>
+                    ) : fares.routeFares.map(route => (
+                       <tr key={route.id} style={styles.row}>
+                         <td style={styles.tdStrong}>{route.pickup}</td>
+                         <td style={styles.tdStrong}>{route.offboarding}</td>
+                         <td style={styles.td}>{route.amount} <span style={{fontSize: 12, color: '#94a3b8', marginLeft: 4}}>{fares.currency}</span></td>
+                         <td style={styles.td}>
+                           <button onClick={() => handleRemoveRoute(route.id)} style={styles.deleteBtn}>
+                             <Trash2 size={16}/> Remove
+                           </button>
+                         </td>
+                       </tr>
+                    ))}
+                  </tbody>
+                </table>
+             </div>
+          </div>
+        </div>
+
+        {/* Global Multipliers Section */}
+        <div style={styles.sectionCard}>
+           <div style={styles.sectionHeader}>
+            <div style={styles.sectionTitle}>Global Economy</div>
+            <div style={styles.sectionSub}>Currency and platform commission.</div>
           </div>
           <div style={{ padding: '24px' }}>
             <div style={styles.fieldRow}>
@@ -100,72 +247,6 @@ export default function FaresPage() {
                  onChange={(e) => handleChange('currency', e.target.value)}
                  style={styles.input}
                />
-            </div>
-            
-            <div style={styles.fieldRow}>
-               <label style={styles.label}>Base Fare</label>
-               <div style={{display: 'flex', alignItems: 'center', gap: 8}}>
-                 <input
-                   type="number"
-                   value={fares.baseFare}
-                   onChange={(e) => handleChange('baseFare', e.target.value)}
-                   style={{...styles.input, flex: 1}}
-                 />
-                 <span style={styles.unit}>{fares.currency}</span>
-               </div>
-               <div style={styles.helpText}>Added instantly when a ride begins.</div>
-            </div>
-
-            <div style={styles.fieldRow}>
-               <label style={styles.label}>Per-Kilometer Rate</label>
-               <div style={{display: 'flex', alignItems: 'center', gap: 8}}>
-                 <input
-                   type="number"
-                   value={fares.perKmRate}
-                   onChange={(e) => handleChange('perKmRate', e.target.value)}
-                   style={{...styles.input, flex: 1}}
-                 />
-                 <span style={styles.unit}>{fares.currency} / km</span>
-               </div>
-               <div style={styles.helpText}>Charged for every kilometer of distance.</div>
-            </div>
-
-            <div style={styles.fieldRow}>
-               <label style={styles.label}>Per-Minute Rate</label>
-               <div style={{display: 'flex', alignItems: 'center', gap: 8}}>
-                 <input
-                   type="number"
-                   value={fares.perMinRate}
-                   onChange={(e) => handleChange('perMinRate', e.target.value)}
-                   style={{...styles.input, flex: 1}}
-                 />
-                 <span style={styles.unit}>{fares.currency} / min</span>
-               </div>
-               <div style={styles.helpText}>Charged for time spent in traffic or long waits.</div>
-            </div>
-          </div>
-        </div>
-
-        {/* Global Multipliers Section */}
-        <div style={styles.sectionCard}>
-           <div style={styles.sectionHeader}>
-            <div style={styles.sectionTitle}>Platform Logic</div>
-            <div style={styles.sectionSub}>Surge algorithms and platform commission limits.</div>
-          </div>
-          <div style={{ padding: '24px' }}>
-            <div style={styles.fieldRow}>
-               <label style={styles.label}>Surge Multiplier</label>
-               <div style={{display: 'flex', alignItems: 'center', gap: 8}}>
-                 <input
-                   type="number"
-                   step="0.1"
-                   value={fares.surgeMultiplier}
-                   onChange={(e) => handleChange('surgeMultiplier', e.target.value)}
-                   style={{...styles.input, flex: 1}}
-                 />
-                 <span style={styles.unit}>x Base</span>
-               </div>
-               <div style={styles.helpText}>1.0 is standard rate. 1.5 increases prices by 50% system-wide.</div>
             </div>
 
             <div style={styles.fieldRow}>
@@ -186,7 +267,7 @@ export default function FaresPage() {
             
             <div style={{ marginTop: '36px', display: 'flex', justifyContent: 'flex-end', paddingTop: '20px', borderTop: '1px solid #e2e8f0' }}>
                <button onClick={handleSave} disabled={saving} style={styles.primaryBtn}>
-                 <Save size={18} /> {saving ? 'Applying...' : 'Save Fare Settings'}
+                 <Save size={18} /> {saving ? 'Saving...' : 'Publish Changes'}
                </button>
             </div>
           </div>
@@ -241,7 +322,7 @@ const styles = {
   },
   grid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))',
     gap: 20,
     alignItems: 'start',
   },
@@ -254,7 +335,7 @@ const styles = {
   sectionHeader: {
     padding: '22px 24px 18px',
     borderBottom: '1px solid #e2e8f0',
-    background: '#f8fafc',
+    background: '#ffffff',
   },
   sectionTitle: {
     fontSize: 18,
@@ -303,15 +384,68 @@ const styles = {
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
+    gap: 8,
     padding: '14px 24px',
     borderRadius: 12,
     border: 'none',
     background: 'linear-gradient(135deg, #0ea5e9, #2563eb)',
     color: 'white',
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: 700,
     cursor: 'pointer',
+  },
+  deleteBtn: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+    padding: '8px 12px',
+    borderRadius: 10,
+    border: '1px solid #fecaca',
+    background: '#fef2f2',
+    color: '#b91c1c',
+    fontSize: 12,
+    fontWeight: 700,
+    cursor: 'pointer',
+  },
+  tableWrap: {
+    overflowX: 'auto',
+  },
+  table: {
     width: '100%',
+    borderCollapse: 'collapse',
+    minWidth: 500,
+  },
+  th: {
+    padding: '14px 24px',
+    background: '#f8fafc',
+    color: '#64748b',
+    textAlign: 'left',
+    fontSize: 12,
+    fontWeight: 800,
+    textTransform: 'uppercase',
+    letterSpacing: '0.08em',
+    borderBottom: '1px solid #e2e8f0',
+  },
+  row: {
+    borderBottom: '1px solid #e2e8f0',
+  },
+  td: {
+    padding: '18px 24px',
+    fontSize: 14,
+    color: '#475569',
+    verticalAlign: 'middle',
+  },
+  tdStrong: {
+    padding: '18px 24px',
+    fontSize: 14,
+    fontWeight: 700,
+    color: '#0f172a',
+    verticalAlign: 'middle',
+  },
+  empty: {
+    padding: '30px 24px',
+    color: '#94a3b8',
+    fontSize: 14,
+    textAlign: 'center',
   },
 }

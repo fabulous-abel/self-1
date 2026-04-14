@@ -24,11 +24,10 @@ const dispatchStateByLocation = new Map();
 
 let globalFareSettings = {
   currency: "ETB",
-  baseFare: 200,
-  perKmRate: 20,
-  perMinRate: 5,
   platformCommissionPercent: 10,
-  surgeMultiplier: 1.0,
+  routeFares: [
+    { id: "route_test_1", pickup: "Terminal A", offboarding: "City Center", amount: 400 },
+  ],
 };
 
 const DEFAULT_DRIVER_EARNINGS = Object.freeze({
@@ -1598,11 +1597,8 @@ function updateFareSettings(updates) {
   globalFareSettings = {
     ...globalFareSettings,
     currency: safeString(updates.currency) || globalFareSettings.currency,
-    baseFare: updates.baseFare !== undefined ? Number(updates.baseFare) : globalFareSettings.baseFare,
-    perKmRate: updates.perKmRate !== undefined ? Number(updates.perKmRate) : globalFareSettings.perKmRate,
-    perMinRate: updates.perMinRate !== undefined ? Number(updates.perMinRate) : globalFareSettings.perMinRate,
     platformCommissionPercent: updates.platformCommissionPercent !== undefined ? Number(updates.platformCommissionPercent) : globalFareSettings.platformCommissionPercent,
-    surgeMultiplier: updates.surgeMultiplier !== undefined ? Number(updates.surgeMultiplier) : globalFareSettings.surgeMultiplier,
+    routeFares: Array.isArray(updates.routeFares) ? updates.routeFares : globalFareSettings.routeFares,
   };
   return { ...globalFareSettings };
 }
