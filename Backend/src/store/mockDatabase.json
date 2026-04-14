@@ -1,0 +1,271 @@
+{
+  "queues": [
+    [
+      "queue_c393cf911a2b",
+      {
+        "id": "queue_c393cf911a2b",
+        "_id": "queue_c393cf911a2b",
+        "name": "Terminal A",
+        "type": "Dispatch",
+        "averageWaitMinutes": 8,
+        "capacity": 4,
+        "location": {
+          "latitude": 8.985,
+          "longitude": 38.755
+        },
+        "entries": []
+      }
+    ],
+    [
+      "queue_6f1e8251717d",
+      {
+        "id": "queue_6f1e8251717d",
+        "_id": "queue_6f1e8251717d",
+        "name": "Corporate Exit",
+        "type": "Dispatch",
+        "averageWaitMinutes": 8,
+        "capacity": 4,
+        "location": {
+          "latitude": 8.990499999999999,
+          "longitude": 38.766000000000005
+        },
+        "entries": []
+      }
+    ],
+    [
+      "queue_de3f4f981e35",
+      {
+        "id": "queue_de3f4f981e35",
+        "_id": "queue_de3f4f981e35",
+        "name": "Main Gate",
+        "type": "Dispatch",
+        "averageWaitMinutes": 8,
+        "capacity": 4,
+        "location": {
+          "latitude": 8.995999999999999,
+          "longitude": 38.777
+        },
+        "entries": []
+      }
+    ]
+  ],
+  "users": [
+    [
+      "user_17b2d1d2f50f",
+      {
+        "id": "user_17b2d1d2f50f",
+        "phone": "+251911000777",
+        "name": "Meron T.",
+        "role": "driver",
+        "createdAt": "2026-04-14T11:12:06.484Z"
+      }
+    ]
+  ],
+  "usersByPhone": [
+    [
+      "driver:+251911000777",
+      "user_17b2d1d2f50f"
+    ]
+  ],
+  "drivers": [
+    [
+      "driver_4f56db2dbb93",
+      {
+        "id": "driver_4f56db2dbb93",
+        "userId": "user_17b2d1d2f50f",
+        "queueId": "bole-airport",
+        "status": "offline",
+        "vehicle": {
+          "brand": "Toyota",
+          "model": "Vitz",
+          "plateNumber": "AA-18264",
+          "color": "Pearl White",
+          "photoUrl": "https://lh3.googleusercontent.com/aida-public/AB6AXuC8PFqZUDNrieW7u_P1CKoTxJa_P4Yl2HPpe_40HavtxD0QmTppYtOgnBsb0kXeqzM__UXDXUjNHHPQQ5IfrsfciWlMW5jiPjwVldA0w2IzyKWkX9wHPx6tyk6UzX2RNkkvsuHwrAG9Pxu73LImQne0bm9GPTXB88c_nmjyWZNxdwH0N4kzCeoumXSQnrqrAQXTwt0tArDQT_B84PsHVCSWC9zi4iv3S28jORBtFyxI8OcailsHnCbzbUTrO6jeOnkQw-W6UngnyRU0"
+        },
+        "documents": {
+          "vehiclePhotoUrl": "https://lh3.googleusercontent.com/aida-public/AB6AXuC8PFqZUDNrieW7u_P1CKoTxJa_P4Yl2HPpe_40HavtxD0QmTppYtOgnBsb0kXeqzM__UXDXUjNHHPQQ5IfrsfciWlMW5jiPjwVldA0w2IzyKWkX9wHPx6tyk6UzX2RNkkvsuHwrAG9Pxu73LImQne0bm9GPTXB88c_nmjyWZNxdwH0N4kzCeoumXSQnrqrAQXTwt0tArDQT_B84PsHVCSWC9zi4iv3S28jORBtFyxI8OcailsHnCbzbUTrO6jeOnkQw-W6UngnyRU0",
+          "lastUploadedDocumentType": ""
+        },
+        "earnings": {
+          "currency": "ETB",
+          "today": 1280,
+          "week": 6840,
+          "month": 27300,
+          "total": 27300
+        },
+        "completedToday": 5,
+        "activeRideId": null,
+        "createdAt": "2026-04-14T11:12:06.485Z",
+        "updatedAt": "2026-04-14T11:12:06.485Z"
+      }
+    ]
+  ],
+  "driversByUserId": [
+    [
+      "user_17b2d1d2f50f",
+      "driver_4f56db2dbb93"
+    ]
+  ],
+  "rides": [],
+  "payments": [],
+  "managedUsers": [
+    [
+      "managed_driver_6124fac190d5",
+      {
+        "id": "managed_driver_6124fac190d5",
+        "role": "driver",
+        "fullName": "Dawit Alemu",
+        "phoneNumber": "+251912345678",
+        "email": "251912345678@linket.driver.auth",
+        "vehicleInfo": "Toyota Vitz - AA 67890",
+        "source": "seed",
+        "createdAt": "2026-04-14T11:12:06.469Z",
+        "updatedAt": "2026-04-14T11:12:06.469Z"
+      }
+    ],
+    [
+      "managed_passenger_73eda5e3b682",
+      {
+        "id": "managed_passenger_73eda5e3b682",
+        "role": "passenger",
+        "fullName": "Mekdes Bekele",
+        "phoneNumber": "+251987654321",
+        "email": "251987654321@linket.passenger.auth",
+        "vehicleInfo": "",
+        "source": "seed",
+        "createdAt": "2026-04-14T11:12:06.474Z",
+        "updatedAt": "2026-04-14T11:12:06.474Z"
+      }
+    ]
+  ],
+  "managedUsersByPhone": [
+    [
+      "driver:+251912345678",
+      "managed_driver_6124fac190d5"
+    ],
+    [
+      "passenger:+251987654321",
+      "managed_passenger_73eda5e3b682"
+    ]
+  ],
+  "broadcasts": [],
+  "dispatchLocations": [
+    [
+      "dispatch_location_9ebf79f70958",
+      {
+        "id": "dispatch_location_9ebf79f70958",
+        "name": "Terminal A",
+        "queueId": "queue_c393cf911a2b",
+        "createdAt": "2026-04-14T11:12:06.475Z",
+        "updatedAt": "2026-04-14T11:12:06.475Z"
+      }
+    ],
+    [
+      "dispatch_location_0ff64e7d36e8",
+      {
+        "id": "dispatch_location_0ff64e7d36e8",
+        "name": "Corporate Exit",
+        "queueId": "queue_6f1e8251717d",
+        "createdAt": "2026-04-14T11:12:06.479Z",
+        "updatedAt": "2026-04-14T11:12:06.479Z"
+      }
+    ],
+    [
+      "dispatch_location_e10ef7ca17fc",
+      {
+        "id": "dispatch_location_e10ef7ca17fc",
+        "name": "Main Gate",
+        "queueId": "queue_de3f4f981e35",
+        "createdAt": "2026-04-14T11:12:06.481Z",
+        "updatedAt": "2026-04-14T11:12:06.481Z"
+      }
+    ]
+  ],
+  "dispatchStateByLocation": [
+    [
+      "Terminal A",
+      {
+        "drivers": [
+          {
+            "id": "dispatch_driver_0c56b523e3e6",
+            "driverPhone": "+251911000777",
+            "driverName": "Meron T.",
+            "vehicleInfo": "Toyota Vitz - AA 18264",
+            "status": "waiting",
+            "timestamp": "2026-04-14T10:27:06.483Z"
+          }
+        ],
+        "waitingPassengers": [],
+        "requests": [],
+        "trips": [
+          {
+            "id": "dispatch_trip_6fda0a81b05e",
+            "driverPhone": "+251911000777",
+            "driverName": "Meron T.",
+            "vehicleInfo": "Toyota Vitz - AA 18264",
+            "zone": "Terminal A",
+            "status": "waiting",
+            "capacity": 4,
+            "passengers": [],
+            "latestQueueRequest": null,
+            "createdAt": "2026-04-14T10:27:06.483Z",
+            "updatedAt": "2026-04-14T10:27:06.483Z"
+          }
+        ]
+      }
+    ],
+    [
+      "Corporate Exit",
+      {
+        "drivers": [],
+        "waitingPassengers": [],
+        "requests": [],
+        "trips": []
+      }
+    ],
+    [
+      "Main Gate",
+      {
+        "drivers": [
+          {
+            "id": "dispatch_driver_2eb22269ba12",
+            "driverPhone": "+251911000778",
+            "driverName": "Sami R.",
+            "vehicleInfo": "Suzuki Dzire - AA 22110",
+            "status": "waiting",
+            "timestamp": "2026-04-14T10:42:06.483Z"
+          }
+        ],
+        "waitingPassengers": [],
+        "requests": [],
+        "trips": [
+          {
+            "id": "dispatch_trip_bc683aca6117",
+            "driverPhone": "+251911000778",
+            "driverName": "Sami R.",
+            "vehicleInfo": "Suzuki Dzire - AA 22110",
+            "zone": "Main Gate",
+            "status": "waiting",
+            "capacity": 4,
+            "passengers": [],
+            "latestQueueRequest": null,
+            "createdAt": "2026-04-14T10:42:06.483Z",
+            "updatedAt": "2026-04-14T10:42:06.483Z"
+          }
+        ]
+      }
+    ]
+  ],
+  "globalFareSettings": {
+    "currency": "ETB",
+    "platformCommissionPercent": 10,
+    "routeFares": [
+      {
+        "id": "route_test_1",
+        "pickup": "Terminal A",
+        "offboarding": "City Center",
+        "amount": 400
+      }
+    ]
+  }
+}

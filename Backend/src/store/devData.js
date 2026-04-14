@@ -22,6 +22,40 @@ const broadcasts = new Map();
 const dispatchLocations = new Map();
 const dispatchStateByLocation = new Map();
 
+function hookMap(mapObj) {
+  const origSet = mapObj.set.bind(mapObj);
+  const origDelete = mapObj.delete.bind(mapObj);
+  const origClear = mapObj.clear.bind(mapObj);
+  
+  mapObj.set = function(k, v) {
+    origSet(k, v);
+    if (typeof saveCache === 'function') saveCache();
+    return this;
+  };
+  mapObj.delete = function(k) {
+    const res = origDelete(k);
+    if (res && typeof saveCache === 'function') saveCache();
+    return res;
+  };
+  mapObj.clear = function() {
+    origClear();
+    if (typeof saveCache === 'function') saveCache();
+  };
+}
+
+hookMap(queues);
+hookMap(users);
+hookMap(usersByPhone);
+hookMap(drivers);
+hookMap(driversByUserId);
+hookMap(rides);
+hookMap(payments);
+hookMap(managedUsers);
+hookMap(managedUsersByPhone);
+hookMap(broadcasts);
+hookMap(dispatchLocations);
+hookMap(dispatchStateByLocation);
+
 let globalFareSettings = {
   currency: "ETB",
   platformCommissionPercent: 10,
@@ -29,6 +63,57 @@ let globalFareSettings = {
     { id: "route_test_1", pickup: "Terminal A", offboarding: "City Center", amount: 400 },
   ],
 };
+
+const fs = require('fs');
+const path = require('path');
+const cachePath = path.join(__dirname, 'mockDatabase.json');
+
+function saveCache() {
+  try {
+    const data = {
+      queues: Array.from(queues.entries()),
+      users: Array.from(users.entries()),
+      usersByPhone: Array.from(usersByPhone.entries()),
+      drivers: Array.from(drivers.entries()),
+      driversByUserId: Array.from(driversByUserId.entries()),
+      rides: Array.from(rides.entries()),
+      payments: Array.from(payments.entries()),
+      managedUsers: Array.from(managedUsers.entries()),
+      managedUsersByPhone: Array.from(managedUsersByPhone.entries()),
+      broadcasts: Array.from(broadcasts.entries()),
+      dispatchLocations: Array.from(dispatchLocations.entries()),
+      dispatchStateByLocation: Array.from(dispatchStateByLocation.entries()),
+      globalFareSettings,
+    };
+    fs.writeFileSync(cachePath, JSON.stringify(data, null, 2));
+  } catch (e) {
+    console.error("Cache save error:", e);
+  }
+}
+
+function loadCache() {
+  try {
+    if (!fs.existsSync(cachePath)) return;
+    const data = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
+    if (data.queues) data.queues.forEach(([k, v]) => queues.set(k, v));
+    if (data.users) data.users.forEach(([k, v]) => users.set(k, v));
+    if (data.usersByPhone) data.usersByPhone.forEach(([k, v]) => usersByPhone.set(k, v));
+    if (data.drivers) data.drivers.forEach(([k, v]) => drivers.set(k, v));
+    if (data.driversByUserId) data.driversByUserId.forEach(([k, v]) => driversByUserId.set(k, v));
+    if (data.rides) data.rides.forEach(([k, v]) => rides.set(k, v));
+    if (data.payments) data.payments.forEach(([k, v]) => payments.set(k, v));
+    if (data.managedUsers) data.managedUsers.forEach(([k, v]) => managedUsers.set(k, v));
+    if (data.managedUsersByPhone) data.managedUsersByPhone.forEach(([k, v]) => managedUsersByPhone.set(k, v));
+    if (data.broadcasts) data.broadcasts.forEach(([k, v]) => broadcasts.set(k, v));
+    if (data.dispatchLocations) data.dispatchLocations.forEach(([k, v]) => dispatchLocations.set(k, v));
+    if (data.dispatchStateByLocation) data.dispatchStateByLocation.forEach(([k, v]) => dispatchStateByLocation.set(k, v));
+    if (data.globalFareSettings) globalFareSettings = data.globalFareSettings;
+  } catch (e) {
+    console.error("Cache load error:", e);
+  }
+}
+
+loadCache();
 
 const DEFAULT_DRIVER_EARNINGS = Object.freeze({
   currency: "ETB",
@@ -1600,6 +1685,7 @@ function updateFareSettings(updates) {
     platformCommissionPercent: updates.platformCommissionPercent !== undefined ? Number(updates.platformCommissionPercent) : globalFareSettings.platformCommissionPercent,
     routeFares: Array.isArray(updates.routeFares) ? updates.routeFares : globalFareSettings.routeFares,
   };
+  if (typeof saveCache === 'function') saveCache();
   return { ...globalFareSettings };
 }
 
