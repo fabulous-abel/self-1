@@ -145,6 +145,18 @@ export async function ensureAdminToken() {
   }
 }
 
+// ---------- Fare Management ----------
+
+export async function getFareSettings() {
+  const { data } = await api.get('/admin/fares');
+  return data;
+}
+
+export async function updateFareSettings(updates) {
+  const { data } = await api.put('/admin/fares', updates);
+  return data;
+}
+
 // ---------- Socket.IO ----------
 
 function getSocketClient() {

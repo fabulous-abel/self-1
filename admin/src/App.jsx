@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { AlertCircle, Activity, List, LogOut, MapPin, Users, Users2 } from 'lucide-react'
+import { AlertCircle, Activity, List, LogOut, MapPin, Users, Users2, Banknote } from 'lucide-react'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import ActivityPage from './pages/ActivityPage'
 import LoginPage from './pages/LoginPage'
@@ -10,6 +10,7 @@ import PassengersPage from './pages/PassengersPage'
 import QueuesPage from './pages/QueuesPage'
 import UsersPage from './pages/UsersPage'
 import LandingPage from './pages/LandingPage'
+import FaresPage from './pages/FaresPage'
 
 function ProtectedRoute({ children }) {
   const { user } = useAuth()
@@ -42,6 +43,7 @@ function AppShell() {
           <NavBtn icon={<AlertCircle size={18} />} label="Notifications" active={page === 'notifications'} onClick={() => setPage('notifications')} />
           <NavBtn icon={<List size={18} />} label="Live Queues" active={page === 'queues'} onClick={() => setPage('queues')} />
           <NavBtn icon={<Users2 size={18} />} label="Passengers" active={page === 'passengers'} onClick={() => setPage('passengers')} />
+          <NavBtn icon={<Banknote size={18} />} label="Fares" active={page === 'fares'} onClick={() => setPage('fares')} />
           <NavBtn icon={<Activity size={18} />} label="Activity" active={page === 'activity'} onClick={() => setPage('activity')} />
           <NavBtn icon={<Users size={18} />} label="Users" active={page === 'users'} onClick={() => setPage('users')} />
         </nav>
@@ -57,6 +59,7 @@ function AppShell() {
           {page === 'notifications' && <NotificationsPage />}
           {page === 'queues' && <QueuesPage />}
           {page === 'passengers' && <PassengersPage />}
+          {page === 'fares' && <FaresPage />}
           {page === 'activity' && <ActivityPage />}
           {page === 'users' && <UsersPage />}
         </div>

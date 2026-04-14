@@ -13,6 +13,8 @@ const {
   updateBroadcastRecord,
   updateDispatchLocationRecord,
   updateManagedUserRecord,
+  getFareSettings,
+  updateFareSettings,
 } = require("../store/devData");
 
 const router = express.Router();
@@ -152,6 +154,24 @@ router.post("/requests", (req, res, next) => {
     });
 
     return res.status(201).json(result);
+  } catch (error) {
+    return forwardError(next, error);
+  }
+});
+
+router.get("/fares", (req, res, next) => {
+  try {
+    const fares = getFareSettings();
+    return res.json(fares);
+  } catch (error) {
+    return forwardError(next, error);
+  }
+});
+
+router.put("/fares", (req, res, next) => {
+  try {
+    const fares = updateFareSettings(req.body);
+    return res.json(fares);
   } catch (error) {
     return forwardError(next, error);
   }
