@@ -134,3 +134,17 @@ export async function createLocationQueueRequest({
     throw new Error(extractApiError(error, 'Unable to add the customer to the queue.'))
   }
 }
+
+export async function forceMatchRequest(requestId, driverId) {
+  try {
+    const { data } = await api.post('/admin/requests/force-match', {
+      requestId,
+      driverId
+    })
+
+    notifySubscribers()
+    return data
+  } catch (error) {
+    throw new Error(extractApiError(error, 'Unable to force match the request.'))
+  }
+}

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { CarFront, Clock3, MapPin, Pencil, PhoneCall, Plus, Settings2, Trash2 } from 'lucide-react'
+import { CarFront, Clock3, MapPin, Pencil, PhoneCall, Plus, Settings2, Trash2, AlertTriangle, UserCheck } from 'lucide-react'
 import Modal from '../components/Modal'
 import { useAuth } from '../context/AuthContext'
 import {
@@ -9,7 +9,23 @@ import {
   subscribeToDispatchLocations,
   subscribeToLocationDispatch,
   updateDispatchLocation,
+  forceMatchRequest,
 } from '../lib/locationQueueService'
+
+function WaitTimer({ timestamp }) {
+  const [mins, setMins] = useState(0)
+  useEffect(() => {
+    if (!timestamp) return
+    const update = () => {
+      const diff = Date.now() - new Date(timestamp).getTime()
+      setMins(Math.max(0, Math.floor(diff / 60000)))
+    }
+    update()
+    const int = setInterval(update, 60000)
+    return () => clearInterval(int)
+  }, [timestamp])
+  return <span>{mins}m wait</span>
+}
 
 const EMPTY_REQUEST_FORM = {
   location: '',
@@ -43,6 +59,35 @@ export default function LocationsPage() {
   const [requestError, setRequestError] = useState('')
   const [placeError, setPlaceError] = useState('')
   const [notice, setNotice] = useState('')
+  const [matchModalPassenger, setMatchModalPassenger] = useState(null)
+  const [matchDriverId, setMatchDriverId] = useState('')
+  const [matchSaving, setMatchSaving] = useState(false)
+
+  const hasLongWait = useMemo(() => {
+    return waitingPassengers.some(p => {
+      if (!p.createdAt) return false
+      return Date.now() - new Date(p.createdAt).getTime() > 10 * 60000
+    })
+  }, [waitingPassengers])
+
+  const todayMatches = useMemo(() => {
+    return requests.filter(r => r.status === 'matched').length + trips.filter(t => t.status === 'moving').length
+  }, [requests, trips])
+
+  const matchSuccessRate = useMemo(() => {
+    if (requests.length === 0) return '0%'
+    const matchedCount = requests.filter(r => r.status === 'matched').length
+    return Math.round((matchedCount / requests.length) * 100) + '%'
+  }, [requests])
+  
+  const averageWait = useMemo(() => {
+    if (waitingPassengers.length === 0) return '0 mins'
+    const totalMins = waitingPassengers.reduce((acc, p) => {
+       const diff = p.createdAt ? (Date.now() - new Date(p.createdAt).getTime()) : 0
+       return acc + diff
+    }, 0)
+    return Math.round(totalMins / 60000 / waitingPassengers.length) + ' mins'
+  }, [waitingPassengers])
 
   useEffect(() => {
     const unsubscribe = subscribeToDispatchLocations({
@@ -236,6 +281,23 @@ export default function LocationsPage() {
     }
   }
 
+  const handleForceMatch = async (e) => {
+    e.preventDefault()
+    if (!matchModalPassenger || !matchDriverId) return
+    setMatchSaving(true)
+    setNotice('')
+    setRequestError('')
+    try {
+      await forceMatchRequest(matchModalPassenger.id, matchDriverId)
+      setNotice(`Successfully forced match for ${matchModalPassenger.customerName}.`)
+      setMatchModalPassenger(null)
+    } catch(err) {
+      setRequestError(err?.message || 'Failed to force match')
+    } finally {
+      setMatchSaving(false)
+    }
+  }
+
   return (
     <div>
       <div style={styles.headerRow}>
@@ -248,11 +310,14 @@ export default function LocationsPage() {
         </div>
 
         <div style={styles.headerActions}>
-          {view === 'dispatch' ? (
-            <button type="button" onClick={openRequestModal} style={styles.primaryBtn}>
-              <Plus size={18} /> Add Phone Request
-            </button>
-          ) : (
+          <select 
+             value={location} 
+             onChange={(e) => setLocation(e.target.value)} 
+             style={{...styles.input, width: 'auto', padding: '10px 14px', marginRight: '6px'}}
+          >
+             {locations.map(loc => <option key={loc.id} value={loc.name}>{loc.name}</option>)}
+          </select>
+          {view === 'places' && (
             <button type="button" onClick={openCreatePlaceModal} style={styles.primaryBtn}>
               <Plus size={18} /> Add Place
             </button>
@@ -268,6 +333,13 @@ export default function LocationsPage() {
           <Settings2 size={16} /> Manage Places
         </button>
       </div>
+
+      {hasLongWait && view === 'dispatch' && (
+        <div style={{...styles.errorBanner, background: '#fffbeb', color: '#b45309', borderColor: '#fcd34d', display: 'flex', alignItems: 'center', gap: 8, marginTop: 0, marginBottom: 16}}>
+          <AlertTriangle size={18} />
+          <strong>Attention:</strong> One or more queued passengers have been waiting &gt; 10 minutes!
+        </div>
+      )}
 
       {notice ? <div style={styles.notice}>{notice}</div> : null}
       {syncError ? <div style={styles.errorBanner}>{syncError}</div> : null}
@@ -301,10 +373,37 @@ export default function LocationsPage() {
                 <SummaryCard icon={<Clock3 size={18} />} label="Queued Requests" value={requests.filter((item) => item.status === 'queued').length} />
               </div>
 
+              {/* Advanced Analytics Summary Bar */}
+              <div style={{...styles.summaryRow, gridTemplateColumns: 'repeat(3, 1fr)', marginTop: '-8px'}}>
+                 <div style={{...styles.summaryCard, padding: '12px 20px'}}>
+                   <div>
+                     <div style={styles.summaryLabel}>Today's Matches</div>
+                     <div style={styles.summaryValue}>{todayMatches}</div>
+                   </div>
+                 </div>
+                 <div style={{...styles.summaryCard, padding: '12px 20px'}}>
+                   <div>
+                     <div style={styles.summaryLabel}>Avg Caller Wait</div>
+                     <div style={styles.summaryValue}>{averageWait}</div>
+                   </div>
+                 </div>
+                 <div style={{...styles.summaryCard, padding: '12px 20px'}}>
+                   <div>
+                     <div style={styles.summaryLabel}>Match Success Rate</div>
+                     <div style={styles.summaryValue}>{matchSuccessRate}</div>
+                   </div>
+                 </div>
+              </div>
+
               <div style={styles.grid}>
                 <SectionCard
                   title={`Phone Requests for ${location}`}
                   subtitle="Every customer call added from admin is logged here."
+                  action={
+                    <button type="button" onClick={openRequestModal} style={{...styles.primaryBtn, padding: '8px 12px', fontSize: 13}}>
+                      <Plus size={16} /> Add Request
+                    </button>
+                  }
                 >
                   {requests.length === 0 ? (
                     <div style={styles.empty}>No phone requests logged for this location yet.</div>
@@ -369,6 +468,7 @@ export default function LocationsPage() {
                                 {driver.latestRequest?.customerName
                                   ? `${driver.latestRequest.customerName} (${driver.latestRequest.customerPhone || 'no phone'})`
                                   : 'No recent match'}
+                                  <br/><small style={{color: '#94a3b8'}}><WaitTimer timestamp={driver.tripStatus === 'waiting' && driver.latestRequest?.updatedAt ? driver.latestRequest?.updatedAt : null} /></small>
                               </td>
                             </tr>
                           ))}
@@ -394,6 +494,7 @@ export default function LocationsPage() {
                           <th style={styles.th}>Phone</th>
                           <th style={styles.th}>Note</th>
                           <th style={styles.th}>Added</th>
+                          <th style={styles.th}>Action</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -402,7 +503,12 @@ export default function LocationsPage() {
                             <td style={styles.tdStrong}>{item.customerName}</td>
                             <td style={styles.td}>{item.customerPhone}</td>
                             <td style={styles.td}>{item.note || 'No note'}</td>
-                            <td style={styles.td}>{formatDateTime(item.createdAt)}</td>
+                            <td style={styles.td}>{formatDateTime(item.createdAt)}<br/><small style={{color: '#94a3b8', fontWeight: 600}}><WaitTimer timestamp={item.createdAt} /></small></td>
+                            <td style={styles.td}>
+                              <button onClick={() => setMatchModalPassenger(item)} style={{...styles.secondaryBtn, padding: '8px 12px', fontSize: 12}}>
+                                <UserCheck size={14} style={{marginRight: 4, transform: 'translateY(2px)'}}/> Force Match
+                              </button>
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -571,16 +677,45 @@ export default function LocationsPage() {
         </div>
         {placeError ? <div style={styles.errorBanner}>{placeError}</div> : null}
       </Modal>
+
+      <Modal
+        open={Boolean(matchModalPassenger)}
+        onClose={() => !matchSaving && setMatchModalPassenger(null)}
+        title={`Force Match: ${matchModalPassenger?.customerName}`}
+        subtitle="Select an available queued driver to force bypass the automated matching."
+        footer={(
+           <div style={styles.modalFooter}>
+             <button type="button" onClick={() => setMatchModalPassenger(null)} style={styles.secondaryBtn}>Cancel</button>
+             <button type="button" onClick={handleForceMatch} disabled={matchSaving} style={styles.primaryBtn}>
+                <UserCheck size={16} /> {matchSaving ? 'Matching...' : 'Select Target'}
+             </button>
+           </div>
+        )}
+      >
+        <div style={{marginBottom: 16}}>
+          <label style={styles.label}>Select Driver</label>
+          <select value={matchDriverId} onChange={(e) => setMatchDriverId(e.target.value)} style={{...styles.input}}>
+             <option value="">-- Choose a queued driver --</option>
+             {driverRows.filter(d => d.tripStatus === 'waiting').map(d => (
+                <option key={d.id} value={d.id}>{d.driverName} ({d.vehicleInfo})</option>
+             ))}
+          </select>
+        </div>
+        {requestError ? <div style={styles.errorBanner}>{requestError}</div> : null}
+      </Modal>
     </div>
   )
 }
 
-function SectionCard({ title, subtitle, children }) {
+function SectionCard({ title, subtitle, action, children }) {
   return (
     <div style={styles.sectionCard}>
-      <div style={styles.sectionHeader}>
-        <div style={styles.sectionTitle}>{title}</div>
-        <div style={styles.sectionSub}>{subtitle}</div>
+      <div style={{...styles.sectionHeader, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+        <div>
+          <div style={styles.sectionTitle}>{title}</div>
+          <div style={styles.sectionSub}>{subtitle}</div>
+        </div>
+        {action && <div>{action}</div>}
       </div>
       {children}
     </div>
