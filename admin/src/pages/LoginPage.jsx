@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { Code, Layout, ShieldCheck, Zap } from 'lucide-react'
 
 export default function LoginPage() {
   const { login } = useAuth()
@@ -31,62 +32,54 @@ export default function LoginPage() {
         <section style={styles.leftPanel}>
           <Link to="/" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 14 }}>
             <div style={styles.logoCircle}>
-              <span style={{ fontSize: 28, fontWeight: 900, color: '#67e8f9' }}>L</span>
+              <Code size={24} color="#ffffff" />
             </div>
             <div>
-              <div style={styles.logoTitle}>LinkEt Admin</div>
-              <div style={styles.logoSub}>Backend dispatch workspace</div>
+              <div style={styles.logoTitle}>LinkEt Web</div>
+              <div style={styles.logoSub}>Client Portal</div>
             </div>
           </Link>
 
-
-          <div style={styles.eyebrow}>Operations Hub</div>
-          <h1 style={styles.heroTitle}>Run queue operations from a focused left-right control surface.</h1>
+          <div style={styles.eyebrow}>Secure Login</div>
+          <h1 style={styles.heroTitle}>Manage your web projects from a single unified dashboard.</h1>
           <p style={styles.heroCopy}>
-            Review dispatch state, broadcast updates, user records, and live queue controls from one admin entry point.
+            Review project milestones, submit tickets, view analytics, and collaborate with our development team seamlessly.
           </p>
 
           <div style={styles.featureGrid}>
             <FeatureCard
-              title="Queue Control"
-              text="Inspect live queues, monitor waiting positions, and remove entries from admin tools."
+              icon={<Layout size={20} color="#F39C12" />}
+              title="Project Tracking"
+              text="Monitor your web application's progress from concept to deployment."
             />
             <FeatureCard
-              title="Dispatch Board"
-              text="Manage places and route phone requests through the backend-backed dispatch flow."
+              icon={<ShieldCheck size={20} color="#F39C12" />}
+              title="Secure Storage"
+              text="Access sensitive assets, contracts, and credentials in a protected environment."
             />
             <FeatureCard
-              title="Broadcasts"
-              text="Publish operational notices without depending on Firestore in the browser."
-            />
-            <FeatureCard
-              title="User Records"
-              text="Work with backend-managed driver and passenger records in the same workspace."
+              icon={<Zap size={20} color="#F39C12" />}
+              title="Performance"
+              text="View real-time analytics and optimization metrics for your platforms."
             />
           </div>
 
-          <div style={styles.statsRow}>
-            <MiniPanel label="Primary API" value="Backend /api" />
-            <MiniPanel label="Session Mode" value="Local Login" />
-            <MiniPanel label="Update Mode" value="Polling" />
-          </div>
         </section>
 
         <section style={styles.rightPanel}>
           <div style={styles.formCard}>
-            <h2 style={styles.heading}>Sign in to your account</h2>
+            <h2 style={styles.heading}>Access Your Account</h2>
             <p style={styles.sub}>
-              Sign in still uses local browser storage. Queue, dispatch, user, and broadcast data now load through the
-              backend API.
+              Enter your credentials to access your dedicated project workspace.
             </p>
             <form onSubmit={handleLogin} style={{ marginTop: 28 }}>
-              <label style={styles.label}>Email address</label>
+              <label style={styles.label}>Email Address</label>
               <input
                 type="email"
                 required
                 value={email}
                 onChange={event => setEmail(event.target.value)}
-                placeholder="Enter your admin email"
+                placeholder="client@company.com"
                 style={styles.input}
               />
 
@@ -96,14 +89,14 @@ export default function LoginPage() {
                 required
                 value={password}
                 onChange={event => setPassword(event.target.value)}
-                placeholder="Enter your local admin password"
+                placeholder="Enter your password"
                 style={styles.input}
               />
 
               {error ? <div style={styles.errorBanner}>{error}</div> : null}
 
               <button type="submit" disabled={loading} style={styles.btn}>
-                {loading ? 'Signing in...' : 'Sign in'}
+                {loading ? 'Authenticating...' : 'Sign In'}
               </button>
             </form>
           </div>
@@ -113,20 +106,12 @@ export default function LoginPage() {
   )
 }
 
-function FeatureCard({ title, text }) {
+function FeatureCard({ icon, title, text }) {
   return (
     <div style={styles.featureCard}>
+      <div style={{ marginBottom: 12 }}>{icon}</div>
       <div style={styles.featureTitle}>{title}</div>
       <div style={styles.featureText}>{text}</div>
-    </div>
-  )
-}
-
-function MiniPanel({ label, value }) {
-  return (
-    <div style={styles.miniPanel}>
-      <div style={styles.miniPanelLabel}>{label}</div>
-      <div style={styles.miniPanelValue}>{value}</div>
     </div>
   )
 }
@@ -137,45 +122,40 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    background:
-      'radial-gradient(circle at top left, rgba(103,232,249,0.18), transparent 26%), linear-gradient(135deg, #08111f 0%, #10233d 53%, #efe7d8 53%, #f7f3ea 100%)',
+    background: '#f8fafc',
     fontFamily: "'Inter', system-ui, sans-serif",
     padding: 24,
   },
   shell: {
     width: '100%',
-    maxWidth: 1180,
+    maxWidth: 1100,
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-    borderRadius: 30,
+    gridTemplateColumns: '1.2fr 1fr',
+    borderRadius: 24,
     overflow: 'hidden',
-    boxShadow: '0 32px 90px rgba(8, 17, 31, 0.28)',
-    background: 'rgba(255,255,255,0.7)',
-    backdropFilter: 'blur(14px)',
+    boxShadow: '0 25px 50px -12px rgba(29, 105, 100, 0.25)',
+    background: '#ffffff',
   },
   leftPanel: {
-    padding: '42px 38px',
+    padding: '60px 48px',
     display: 'flex',
     flexDirection: 'column',
-    gap: 24,
-    background: 'linear-gradient(180deg, rgba(7,18,33,0.97) 0%, rgba(16,35,61,0.95) 100%)',
+    gap: 32,
+    background: '#041615',
     color: 'white',
+    position: 'relative',
+    overflow: 'hidden',
   },
   rightPanel: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: '32px 28px',
-    background: 'linear-gradient(180deg, rgba(248,244,236,0.96) 0%, rgba(255,255,255,0.98) 100%)',
+    padding: '40px',
+    background: '#ffffff',
   },
   formCard: {
     width: '100%',
-    maxWidth: 430,
-    background: 'rgba(255,255,255,0.9)',
-    borderRadius: 24,
-    padding: '34px 32px 30px',
-    border: '1px solid rgba(148,163,184,0.18)',
-    boxShadow: '0 18px 44px rgba(15, 23, 42, 0.12)',
+    maxWidth: 400,
   },
   logoWrap: {
     display: 'flex',
@@ -183,152 +163,132 @@ const styles = {
     gap: 14,
   },
   logoCircle: {
-    width: 54,
-    height: 54,
-    borderRadius: 16,
-    background: 'rgba(103, 232, 249, 0.08)',
-    border: '1px solid rgba(103, 232, 249, 0.18)',
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    background: 'rgba(76, 184, 184, 0.2)',
+    border: '1px solid rgba(76, 184, 184, 0.3)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
   },
   logoTitle: {
-    fontSize: 17,
+    fontSize: 20,
     fontWeight: 800,
-    color: '#f8fafc',
+    color: '#ffffff',
+    letterSpacing: '-0.5px',
   },
   logoSub: {
-    fontSize: 12,
+    fontSize: 13,
     color: '#94a3b8',
     marginTop: 2,
   },
   eyebrow: {
     display: 'inline-flex',
     width: 'fit-content',
-    padding: '7px 12px',
+    padding: '6px 14px',
     borderRadius: 999,
-    background: 'rgba(103, 232, 249, 0.12)',
-    color: '#a5f3fc',
-    border: '1px solid rgba(103, 232, 249, 0.12)',
+    background: 'rgba(243, 156, 18, 0.15)',
+    color: '#F39C12',
+    border: '1px solid rgba(243, 156, 18, 0.3)',
     fontSize: 12,
-    fontWeight: 800,
-    letterSpacing: '0.08em',
+    fontWeight: 700,
+    letterSpacing: '0.05em',
     textTransform: 'uppercase',
   },
   heroTitle: {
     margin: 0,
-    fontSize: 38,
-    lineHeight: 1.08,
-    fontWeight: 900,
-    color: '#f8fafc',
-    maxWidth: 520,
+    fontSize: 36,
+    lineHeight: 1.15,
+    fontWeight: 800,
+    color: '#ffffff',
+    maxWidth: 480,
   },
   heroCopy: {
     margin: 0,
-    fontSize: 15,
-    lineHeight: 1.7,
-    color: '#cbd5e1',
-    maxWidth: 520,
+    fontSize: 16,
+    lineHeight: 1.6,
+    color: '#94a3b8',
+    maxWidth: 440,
   },
   featureGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-    gap: 14,
+    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+    gap: 20,
+    marginTop: 'auto',
   },
   featureCard: {
-    padding: '18px 18px 16px',
-    borderRadius: 18,
-    background: 'rgba(15, 23, 42, 0.26)',
-    border: '1px solid rgba(148,163,184,0.14)',
+    padding: '24px',
+    borderRadius: 16,
+    background: 'rgba(255,255,255,0.03)',
+    border: '1px solid rgba(255,255,255,0.05)',
   },
   featureTitle: {
-    fontSize: 14,
-    fontWeight: 800,
-    color: '#f8fafc',
+    fontSize: 15,
+    fontWeight: 700,
+    color: '#ffffff',
     marginBottom: 8,
   },
   featureText: {
-    fontSize: 13,
-    lineHeight: 1.65,
-    color: '#cbd5e1',
-  },
-  statsRow: {
-    marginTop: 'auto',
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-    gap: 12,
-  },
-  miniPanel: {
-    padding: '16px 16px 14px',
-    borderRadius: 16,
-    background: 'rgba(248, 250, 252, 0.08)',
-    border: '1px solid rgba(148,163,184,0.14)',
-  },
-  miniPanelLabel: {
-    fontSize: 11,
-    fontWeight: 800,
+    fontSize: 14,
+    lineHeight: 1.5,
     color: '#94a3b8',
-    textTransform: 'uppercase',
-    letterSpacing: '0.08em',
-  },
-  miniPanelValue: {
-    marginTop: 10,
-    fontSize: 18,
-    fontWeight: 800,
-    color: '#f8fafc',
   },
   heading: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: 800,
     color: '#0f172a',
     margin: 0,
+    letterSpacing: '-0.5px',
   },
   sub: {
-    fontSize: 14,
+    fontSize: 15,
     color: '#64748b',
     marginTop: 8,
-    lineHeight: 1.65,
+    lineHeight: 1.6,
   },
   label: {
     display: 'block',
-    fontSize: 13,
-    fontWeight: 700,
+    fontSize: 14,
+    fontWeight: 600,
     color: '#334155',
-    marginBottom: 6,
+    marginBottom: 8,
   },
   input: {
     display: 'block',
     width: '100%',
-    padding: '13px 14px',
+    padding: '14px 16px',
     borderRadius: 12,
-    border: '1.5px solid #dbe3ee',
+    border: '1px solid #cbd5e1',
     fontSize: 15,
     outline: 'none',
     boxSizing: 'border-box',
     color: '#0f172a',
-    background: '#fffdf9',
+    background: '#ffffff',
+    transition: 'border-color 0.2s',
   },
   errorBanner: {
-    marginTop: 14,
-    padding: '10px 14px',
+    marginTop: 16,
+    padding: '12px 14px',
     background: '#fef2f2',
     border: '1px solid #fecaca',
-    borderRadius: 10,
+    borderRadius: 12,
     color: '#dc2626',
-    fontSize: 13,
+    fontSize: 14,
+    fontWeight: 500,
   },
   btn: {
-    marginTop: 22,
+    marginTop: 24,
     width: '100%',
-    padding: '14px',
-    background: 'linear-gradient(90deg, #0f766e, #0ea5e9)',
+    padding: '16px',
+    background: '#1D6964',
     color: 'white',
-    fontWeight: 800,
+    fontWeight: 700,
     fontSize: 16,
     border: 'none',
-    borderRadius: 14,
+    borderRadius: 12,
     cursor: 'pointer',
-    letterSpacing: 0.2,
-    boxShadow: '0 12px 26px rgba(14, 165, 233, 0.22)',
+    boxShadow: '0 10px 20px -5px rgba(29, 105, 100, 0.4)',
+    transition: 'transform 0.2s',
   },
 }
