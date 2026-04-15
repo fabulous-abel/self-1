@@ -85,18 +85,18 @@ export default function UsersPage() {
 
   return (
     <div>
-      <div style={styles.headerRow}>
+      <div className="page-header-row" style={styles.headerRow}>
         <div>
-          <h1 style={styles.title}>User Records</h1>
-          <p style={styles.sub}>Create backend-managed driver and passenger records, then review the saved profile details in modal flows.</p>
+          <h1 className="page-title" style={styles.title}>User Records</h1>
+          <p className="page-sub" style={styles.sub}>Create backend-managed driver and passenger records, then review the saved profile details in modal flows.</p>
         </div>
 
-        <button type="button" onClick={openCreateModal} style={styles.primaryBtn}>
+        <button type="button" onClick={openCreateModal} className="primary-btn" style={styles.primaryBtn}>
           <Plus size={18} /> New {tab === 'drivers' ? 'Driver' : 'Passenger'}
         </button>
       </div>
 
-      <div style={styles.tabBar}>
+      <div className="tab-bar" style={styles.tabBar}>
         <button type="button" onClick={() => setTab('drivers')} style={tabBtn(tab === 'drivers')}>Drivers</button>
         <button type="button" onClick={() => setTab('passengers')} style={tabBtn(tab === 'passengers')}>Passengers</button>
       </div>
@@ -104,7 +104,7 @@ export default function UsersPage() {
       {notice ? <div style={styles.success}>{notice}</div> : null}
       {!isCreateOpen && error ? <div style={styles.errorBanner}>{error}</div> : null}
 
-      <div style={styles.tableCard}>
+      <div className="table-card" style={styles.tableCard}>
         <div style={styles.tableHeader}>
           <h3 style={styles.cardTitle}>
             {tab === 'drivers' ? 'Drivers' : 'Passengers'} ({users.length})
@@ -116,7 +116,7 @@ export default function UsersPage() {
           <p style={styles.empty}>No {tab} in the backend directory yet.</p>
         ) : (
           <div style={styles.tableWrap}>
-            <table style={styles.table}>
+            <table className="responsive-table" style={styles.table}>
               <thead>
                 <tr>
                   <th style={styles.th}>Name</th>
@@ -136,7 +136,7 @@ export default function UsersPage() {
                     <td style={styles.td}>{user.vehicleInfo || '-'}</td>
                     <td style={styles.td}>{formatDateTime(user.createdAt)}</td>
                     <td style={styles.actionCell}>
-                      <div style={styles.actionGroup}>
+                      <div className="action-group" style={styles.actionGroup}>
                         <button type="button" style={styles.viewBtn} onClick={() => setSelectedUser(user)}>
                           <Eye size={16} /> View
                         </button>
@@ -159,7 +159,7 @@ export default function UsersPage() {
         title={`${editingUser ? 'Edit' : 'Create'} ${tab === 'drivers' ? 'Driver' : 'Passenger'} Record`}
         subtitle={editingUser ? 'Update the saved profile fields for the selected backend user.' : 'Create a backend-managed user record for operational use in the admin tools.'}
         footer={(
-          <div style={styles.modalFooter}>
+          <div className="modal-footer" style={styles.modalFooter}>
             <button type="button" onClick={closeCreateModal} style={styles.secondaryBtn}>Cancel</button>
             <button type="submit" form="user-form" disabled={loading} style={styles.primaryBtn}>
               {loading ? 'Saving...' : editingUser ? `Update ${tab === 'drivers' ? 'Driver' : 'Passenger'}` : `Create ${tab === 'drivers' ? 'Driver' : 'Passenger'}`}
@@ -222,7 +222,7 @@ export default function UsersPage() {
         width={640}
       >
         {selectedUser ? (
-          <div style={styles.detailGrid}>
+          <div className="detail-grid" style={styles.detailGrid}>
             <DetailCard label="Phone" value={selectedUser.phoneNumber} />
             <DetailCard label="Email" value={selectedUser.email} />
             <DetailCard label="Role" value={selectedUser.role} />

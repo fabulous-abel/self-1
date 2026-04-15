@@ -300,16 +300,16 @@ export default function LocationsPage() {
 
   return (
     <div>
-      <div style={styles.headerRow}>
+      <div className="page-header-row" style={styles.headerRow}>
         <div>
-          <h1 style={styles.title}>Location Dispatch</h1>
-          <p style={styles.sub}>
+          <h1 className="page-title" style={styles.title}>Location Dispatch</h1>
+          <p className="page-sub" style={styles.sub}>
             Use the dispatch board for phone queue requests, and the second tab to add, edit, or delete places like
             Terminal A and Corporate Exit.
           </p>
         </div>
 
-        <div style={styles.headerActions}>
+        <div className="header-actions" style={styles.headerActions}>
           <select 
              value={location} 
              onChange={(e) => setLocation(e.target.value)} 
@@ -325,7 +325,7 @@ export default function LocationsPage() {
         </div>
       </div>
 
-      <div style={styles.modeTabs}>
+      <div className="tab-bar" style={styles.modeTabs}>
         <button type="button" onClick={() => setView('dispatch')} style={modeTabBtn(view === 'dispatch')}>
           <PhoneCall size={16} /> Dispatch Board
         </button>
@@ -354,7 +354,7 @@ export default function LocationsPage() {
             </div>
           ) : (
             <>
-              <div style={styles.tabBar}>
+              <div className="tab-bar" style={styles.tabBar}>
                 {locations.map((item) => (
                   <button
                     key={item.id}
@@ -367,14 +367,14 @@ export default function LocationsPage() {
                 ))}
               </div>
 
-              <div style={styles.summaryRow}>
+              <div className="summary-row" style={styles.summaryRow}>
                 <SummaryCard icon={<CarFront size={18} />} label="Drivers In Queue" value={driverRows.length} />
                 <SummaryCard icon={<PhoneCall size={18} />} label="Waiting Callers" value={waitingPassengers.length} />
                 <SummaryCard icon={<Clock3 size={18} />} label="Queued Requests" value={requests.filter((item) => item.status === 'queued').length} />
               </div>
 
               {/* Advanced Analytics Summary Bar */}
-              <div style={{...styles.summaryRow, gridTemplateColumns: 'repeat(3, 1fr)', marginTop: '-8px'}}>
+              <div className="summary-row" style={{...styles.summaryRow, gridTemplateColumns: 'repeat(3, 1fr)', marginTop: '-8px'}}>
                  <div style={{...styles.summaryCard, padding: '12px 20px'}}>
                    <div>
                      <div style={styles.summaryLabel}>Today's Matches</div>
@@ -395,7 +395,7 @@ export default function LocationsPage() {
                  </div>
               </div>
 
-              <div style={styles.grid}>
+              <div className="dispatch-grid" style={styles.grid}>
                 <SectionCard
                   title={`Phone Requests for ${location}`}
                   subtitle="Every customer call added from admin is logged here."
@@ -409,7 +409,7 @@ export default function LocationsPage() {
                     <div style={styles.empty}>No phone requests logged for this location yet.</div>
                   ) : (
                     <div style={styles.tableWrap}>
-                      <table style={styles.table}>
+                      <table className="responsive-table" style={styles.table}>
                         <thead>
                           <tr>
                             <th style={styles.th}>Status</th>
@@ -568,7 +568,7 @@ export default function LocationsPage() {
         title="Add Customer To Location Queue"
         subtitle="Use this when a customer calls and needs to be inserted into the live queue by location."
         footer={(
-          <div style={styles.modalFooter}>
+          <div className="modal-footer" style={styles.modalFooter}>
             <button type="button" onClick={closeRequestModal} style={styles.secondaryBtn}>Cancel</button>
             <button type="submit" form="location-request-form" disabled={requestSaving} style={styles.primaryBtn}>
               <PhoneCall size={18} /> {requestSaving ? 'Adding...' : 'Add To Queue'}

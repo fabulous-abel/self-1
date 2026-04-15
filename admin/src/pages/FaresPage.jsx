@@ -127,10 +127,10 @@ export default function FaresPage() {
 
   return (
     <div>
-      <div style={styles.headerRow}>
+      <div className="page-header-row" style={styles.headerRow}>
         <div>
-          <h1 style={styles.title}>Route Fares Configuration</h1>
-          <p style={styles.sub}>
+          <h1 className="page-title" style={styles.title}>Route Fares Configuration</h1>
+          <p className="page-sub" style={styles.sub}>
             Manage fixed point-to-point pricing combinations based on dispatch pick-up zones and custom offboarding places.
           </p>
         </div>
@@ -139,7 +139,7 @@ export default function FaresPage() {
       {notice ? <div style={styles.notice}>{notice}</div> : null}
       {error ? <div style={styles.errorBanner}>{error}</div> : null}
 
-      <div style={styles.grid}>
+      <div className="fares-page-grid" style={styles.grid}>
         {/* Route Fares Section */}
         <div style={{...styles.sectionCard, gridColumn: '1 / -1'}}>
           <div style={styles.sectionHeader}>
@@ -148,7 +148,7 @@ export default function FaresPage() {
           </div>
           
           <div style={{ padding: '24px 24px 12px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-             <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr) 140px auto', gap: 12, alignItems: 'end' }}>
+             <div className="fares-add-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr) 140px auto', gap: 12, alignItems: 'end' }}>
                 <div>
                    <label style={styles.label}>Origin (Pick-up)</label>
                    <select 
@@ -200,7 +200,7 @@ export default function FaresPage() {
           
           <div style={{ padding: '0px' }}>
              <div style={styles.tableWrap}>
-                <table style={styles.table}>
+                <table className="responsive-table" style={styles.table}>
                   <thead>
                     <tr>
                       <th style={styles.th}>Origin</th>

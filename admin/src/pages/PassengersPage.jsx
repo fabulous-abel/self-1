@@ -117,10 +117,10 @@ export default function PassengersPage() {
   return (
     <div>
       {/* Header */}
-      <div style={s.headerRow}>
+      <div className="page-header-row" style={s.headerRow}>
         <div>
-          <h1 style={s.title}>Passengers</h1>
-          <p style={s.sub}>All passengers currently waiting across every queue. Updates every 8 seconds.</p>
+          <h1 className="page-title" style={s.title}>Passengers</h1>
+          <p className="page-sub" style={s.sub}>All passengers currently waiting across every queue. Updates every 8 seconds.</p>
         </div>
         <div style={s.headerRight}>
           <div style={statPill(online)}>
@@ -149,7 +149,7 @@ export default function PassengersPage() {
 
       {/* Stats */}
       {!loading && online && (
-        <div style={s.statsRow}>
+        <div className="summary-row" style={s.statsRow}>
           <MiniStat label="Total waiting" value={allPassengers.length} />
           <MiniStat
             label="Your turn"
@@ -176,9 +176,9 @@ export default function PassengersPage() {
           {search ? `No passengers matched "${search}"` : 'No passengers in any queue right now.'}
         </div>
       ) : (
-        <div style={s.tableCard}>
+        <div className="table-card" style={s.tableCard}>
           <div style={s.tableWrap}>
-            <table style={s.table}>
+            <table className="responsive-table" style={s.table}>
               <thead>
                 <tr>
                   {['#', 'Name', 'Queue', 'Pickup', 'Destination', 'Status', 'Joined', 'Action'].map(h => (

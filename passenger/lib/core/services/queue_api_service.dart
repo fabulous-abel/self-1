@@ -250,6 +250,16 @@ class QueueApiService {
     }
   }
 
+  Future<int> getNearbyDriversCount() async {
+    try {
+      final res = await _dio.get('/queues/nearby-drivers');
+      return (res.data['availableDrivers'] as num?)?.toInt() ?? 0;
+    } catch (e) {
+      debugPrint('[QueueApi] getNearbyDriversCount failed: $e');
+      return 0;
+    }
+  }
+
   /// POST /api/queues/:id/join
   Future<JoinResult?> joinQueue(String queueId, String token) async {
     try {

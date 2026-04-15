@@ -376,141 +376,315 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
   }
 
   Widget _statusCard() {
-    final subtitle = _ride.isNotEmpty
-        ? 'A ride is active'
-        : _entries.isNotEmpty
-        ? 'Passengers are waiting in $_queueName'
-        : 'No passengers are waiting right now';
-
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-      child: Container(
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(24),
-          gradient: _online
-              ? const LinearGradient(
-                  colors: [DriverColors.teal, Color(0xFF22877F)],
-                )
-              : const LinearGradient(
-                  colors: [Color(0xFF29415A), Color(0xFF364C67)],
+    return Column(
+      children: [
+        if (!_online)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 24),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFF1F0),
+              borderRadius: BorderRadius.circular(28),
+              border: Border.all(color: const Color(0xFFFFCCC7)),
+            ),
+            child: Column(
+              children: [
+                const Icon(
+                  Icons.power_settings_new_rounded,
+                  size: 64,
+                  color: Colors.redAccent,
                 ),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'STATUS',
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontWeight: FontWeight.w800,
+                const SizedBox(height: 16),
+                const Text(
+                  'YOU ARE OFFLINE',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF820014),
+                    letterSpacing: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Go online to start receiving ride requests',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Color(0xFFA8071A)),
+                ),
+                const SizedBox(height: 32),
+                SizedBox(
+                  width: double.infinity,
+                  height: 64,
+                  child: FilledButton(
+                    onPressed: _busy ? null : () => _setOnline(true),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Colors.redAccent,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                    ),
+                    child: const Text(
+                      'GO ONLINE',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    _online ? 'You are online' : 'Go online',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 28,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(subtitle, style: const TextStyle(color: Colors.white70)),
-                ],
+                ),
+              ],
+            ),
+          )
+        else
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [DriverColors.teal, Color(0xFF1E7069)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
+              borderRadius: BorderRadius.circular(28),
+              boxShadow: [
+                BoxShadow(
+                  color: DriverColors.teal.withValues(alpha: 0.3),
+                  blurRadius: 15,
+                  offset: const Offset(0, 8),
+                ),
+              ],
             ),
-            Switch.adaptive(
-              value: _online,
-              onChanged: _busy
-                  ? null
-                  : (value) {
-                      _setOnline(value);
-                    },
-              activeThumbColor: DriverColors.teal,
-              activeTrackColor: Colors.white70,
+            child: Column(
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'ONLINE',
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 1.5,
+                          ),
+                        ),
+                        Text(
+                          'Ready for work',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ],
+                    ),
+                    IconButton.filledTonal(
+                      onPressed: _busy ? null : () => _setOnline(false),
+                      style: IconButton.styleFrom(
+                        backgroundColor: Colors.white24,
+                        foregroundColor: Colors.white,
+                      ),
+                      icon: const Icon(Icons.power_settings_new_rounded),
+                    ),
+                  ],
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
+          ),
+      ],
     );
   }
 
   Widget _rideCard() {
     if (_ride.isEmpty) {
-      return Card(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Text(
-            _online
-                ? 'No active ride. Accept the next passenger when ready.'
-                : 'Go online to start receiving rides.',
+      if (!_online) return const SizedBox.shrink();
+      
+      final hasWaiters = _entries.isNotEmpty;
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: hasWaiters ? const Color(0xFFF0F9F8) : Colors.white,
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(
+            color: hasWaiters ? DriverColors.teal.withValues(alpha: 0.3) : const Color(0xFFE6EDF5),
           ),
+        ),
+        child: Column(
+          children: [
+            Icon(
+              hasWaiters ? Icons.people_alt_rounded : Icons.hourglass_empty_rounded,
+              size: 48,
+              color: hasWaiters ? DriverColors.teal : DriverColors.muted,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              hasWaiters ? '${_entries.length} RIDERS WAITING' : 'WAITING FOR RIDERS',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+                color: hasWaiters ? DriverColors.teal : DriverColors.muted,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              hasWaiters 
+                ? 'Your place in the queue is being handled' 
+                : 'Stay close to $_queueName to receive requests',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Color(0xFF5F6D7E)),
+            ),
+            if (hasWaiters) ...[
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                height: 60,
+                child: FilledButton(
+                  onPressed: _busy ? null : _acceptNext,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: DriverColors.teal,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  child: const Text(
+                    'ACCEPT NEXT PASSENGER',
+                    style: TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                ),
+              ),
+            ],
+          ],
         ),
       );
     }
 
     final status = _text(_ride['status']) ?? 'accepted';
-    final actionStatus = status == 'arrived' ? 'completed' : 'arrived';
-    final actionLabel = status == 'arrived' ? 'Complete ride' : 'Mark arrived';
+    final isArrived = status == 'arrived';
+    final actionStatus = isArrived ? 'completed' : 'arrived';
+    final actionLabel = isArrived ? 'FINISH RIDE' : 'I HAVE ARRIVED';
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Expanded(
-                  child: Text(
-                    'Active ride',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: const Color(0xFF141F2B),
+        borderRadius: BorderRadius.circular(32),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.2),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: isArrived ? Colors.green.shade700 : Colors.orange.shade700,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  isArrived ? 'PICKED UP' : 'EN ROUTE',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
                   ),
                 ),
-                Chip(label: Text(_titleCase(status))),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Text(
-              _text(_ride['passengerName']) ?? 'Passenger',
-              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
-            ),
-            Text(
-              _text(_ride['pickupLabel']) ?? 'Pickup pending',
-              style: const TextStyle(color: DriverColors.muted),
-            ),
-            Text(
-              _text(_ride['destinationLabel']) ?? 'Destination pending',
-              style: const TextStyle(color: DriverColors.muted),
-            ),
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: [
-                _tile('Fare', _money(_ride['fareEtb'])),
-                _tile(
-                  'Passengers',
-                  '${_int(_ride['passengers'], fallback: 1)}',
+              ),
+              const Spacer(),
+              const Text(
+                'ACTIVE RIDE',
+                style: TextStyle(
+                  color: Colors.white54,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900,
                 ),
-                _tile('Vehicle', _text(_ride['vehiclePlate']) ?? 'Pending'),
-              ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          Text(
+            _text(_ride['passengerName']) ?? 'Passenger',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 32,
+              fontWeight: FontWeight.w900,
             ),
-            const SizedBox(height: 12),
-            FilledButton(
-              onPressed: _busy
-                  ? null
-                  : () {
-                      _updateRide(actionStatus);
-                    },
-              child: Text(actionLabel),
+          ),
+          const SizedBox(height: 16),
+          _rideInfoRow(Icons.location_on_rounded, 'From', _text(_ride['pickupLabel']) ?? 'Pickup pending'),
+          const SizedBox(height: 12),
+          _rideInfoRow(Icons.flag_rounded, 'To', _text(_ride['destinationLabel']) ?? 'Destination pending'),
+          const SizedBox(height: 24),
+          Row(
+            children: [
+              Expanded(child: _moneyPill(_money(_ride['fareEtb']))),
+              const SizedBox(width: 12),
+              Expanded(child: _moneyPill('${_int(_ride['passengers'], fallback: 1)} Seats')),
+            ],
+          ),
+          const SizedBox(height: 32),
+          SizedBox(
+            width: double.infinity,
+            height: 72,
+            child: FilledButton(
+              onPressed: _busy ? null : () => _updateRide(actionStatus),
+              style: FilledButton.styleFrom(
+                backgroundColor: isArrived ? Colors.greenAccent.shade700 : DriverColors.teal,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
+              ),
+              child: Text(
+                actionLabel,
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _rideInfoRow(IconData icon, String label, String value) {
+    return Row(
+      children: [
+        Icon(icon, color: Colors.white38, size: 20),
+        const SizedBox(width: 12),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label, style: const TextStyle(color: Colors.white38, fontSize: 10)),
+            Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
           ],
+        ),
+      ],
+    );
+  }
+
+  Widget _moneyPill(String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Center(
+        child: Text(
+          value,
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
         ),
       ),
     );
@@ -582,37 +756,53 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
   }
 
   Widget _homeTab() {
+    final showQueueList = _online && _ride.isEmpty;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _statusCard(),
-        const SizedBox(height: 16),
-        Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: [
-            _tile('Queue', _queueName),
-            _tile('Waiting', '${_entries.length}'),
-            _tile('Completed today', '${_int(_dashboard?['completedToday'])}'),
-          ],
-        ),
-        const SizedBox(height: 16),
-        _rideCard(),
-        const SizedBox(height: 16),
-        const Text(
-          'Next in queue',
-          style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
-        ),
-        const SizedBox(height: 10),
-        if (_entries.isEmpty)
-          const Text('No riders are waiting right now.')
-        else
-          ..._entries.asMap().entries.map(
-            (entry) => Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: _entryCard(entry.value, highlight: entry.key == 0),
+        const SizedBox(height: 24),
+        if (_online && _ride.isEmpty) ...[
+          _rideCard(),
+          const SizedBox(height: 24),
+          Row(
+            children: [
+              Expanded(child: _tile('Wait time', '${_int(_queue['averageWaitMinutes'])} min')),
+              const SizedBox(width: 12),
+              Expanded(child: _tile('Done Today', '${_int(_dashboard?['completedToday'])}')),
+            ],
+          ),
+        ] else if (_ride.isNotEmpty) ...[
+          _rideCard(),
+        ],
+        if (showQueueList) ...[
+          const SizedBox(height: 32),
+          const Text(
+            'WHO IS WAITING',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w900,
+              color: DriverColors.muted,
+              letterSpacing: 1.2,
             ),
           ),
+          const SizedBox(height: 16),
+          if (_entries.isEmpty)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(40.0),
+                child: Text('No riders in queue right now'),
+              ),
+            )
+          else
+            ..._entries.asMap().entries.map(
+              (entry) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _entryCard(entry.value, highlight: entry.key == 0),
+              ),
+            ),
+        ],
       ],
     );
   }

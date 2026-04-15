@@ -29,19 +29,19 @@ export default function ActivityPage() {
 
   return (
     <div>
-      <div style={styles.headerRow}>
+      <div className="page-header-row" style={styles.headerRow}>
         <div>
-          <h1 style={styles.title}>Admin Activity Feed</h1>
-          <p style={styles.sub}>Use tabs to inspect each event stream, then open any row in a modal for full detail.</p>
+          <h1 className="page-title" style={styles.title}>Admin Activity Feed</h1>
+          <p className="page-sub" style={styles.sub}>Use tabs to inspect each event stream, then open any row in a modal for full detail.</p>
         </div>
 
-        <div style={styles.statsCard}>
+        <div className="summary-card" style={styles.statsCard}>
           <div style={styles.statsLabel}>Total Events</div>
-          <div style={styles.statsValue}>{events.length}</div>
+          <div className="summary-value" style={styles.statsValue}>{events.length}</div>
         </div>
       </div>
 
-      <div style={styles.tabBar}>
+      <div className="tab-bar" style={styles.tabBar}>
         {FILTERS.map(filter => {
           const count = filter.key === 'all'
             ? events.length
@@ -67,9 +67,9 @@ export default function ActivityPage() {
         </div>
       ) : null}
 
-      <div style={styles.tableCard}>
+      <div className="table-card" style={styles.tableCard}>
         <div style={styles.tableWrap}>
-          <table style={styles.table}>
+          <table className="responsive-table" style={styles.table}>
             <thead>
               <tr>
                 <th style={styles.th}>Type</th>
@@ -94,7 +94,7 @@ export default function ActivityPage() {
         title={selectedEvent?.title ?? 'Activity Event'}
         subtitle={selectedEvent ? `${labelForKind(selectedEvent.kind)} - ${formatDateTime(selectedEvent.createdAt)}` : ''}
         footer={(
-          <div style={styles.modalFooter}>
+          <div className="modal-footer" style={styles.modalFooter}>
             <button type="button" onClick={() => setSelectedEvent(null)} style={styles.closeBtn}>Close</button>
           </div>
         )}

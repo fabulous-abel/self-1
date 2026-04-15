@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { AlertCircle, Activity, List, LogOut, MapPin, Users, Users2, Banknote } from 'lucide-react'
+import { AlertCircle, Activity, List, LogOut, MapPin, Menu, Users, Users2, Banknote, X } from 'lucide-react'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import ActivityPage from './pages/ActivityPage'
 import LoginPage from './pages/LoginPage'
@@ -26,10 +26,31 @@ function ProtectedRoute({ children }) {
 function AppShell() {
   const { user, logout } = useAuth()
   const [page, setPage] = useState('locations')
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+
+  const navigateTo = (target) => {
+    setPage(target)
+    setSidebarOpen(false)
+  }
 
   return (
-    <div style={styles.root}>
-      <div style={styles.sidebar}>
+    <div className="app-root" style={styles.root}>
+      {/* Mobile hamburger */}
+      <button
+        className="mobile-hamburger"
+        onClick={() => setSidebarOpen(!sidebarOpen)}
+        aria-label="Toggle menu"
+      >
+        {sidebarOpen ? <X size={22} /> : <Menu size={22} />}
+      </button>
+
+      {/* Sidebar overlay for mobile */}
+      <div
+        className={`sidebar-overlay ${sidebarOpen ? 'open' : ''}`}
+        onClick={() => setSidebarOpen(false)}
+      />
+
+      <div className={`app-sidebar ${sidebarOpen ? 'open' : ''}`} style={styles.sidebar}>
         <div style={styles.sidebarLogo}>
           <div style={styles.logoCircle}>L</div>
           <div>
@@ -39,21 +60,21 @@ function AppShell() {
         </div>
 
         <nav style={styles.nav}>
-          <NavBtn icon={<MapPin size={18} />} label="Locations" active={page === 'locations'} onClick={() => setPage('locations')} />
-          <NavBtn icon={<AlertCircle size={18} />} label="Notifications" active={page === 'notifications'} onClick={() => setPage('notifications')} />
-          <NavBtn icon={<List size={18} />} label="Live Queues" active={page === 'queues'} onClick={() => setPage('queues')} />
-          <NavBtn icon={<Users2 size={18} />} label="Passengers" active={page === 'passengers'} onClick={() => setPage('passengers')} />
-          <NavBtn icon={<Banknote size={18} />} label="Fares" active={page === 'fares'} onClick={() => setPage('fares')} />
-          <NavBtn icon={<Activity size={18} />} label="Activity" active={page === 'activity'} onClick={() => setPage('activity')} />
-          <NavBtn icon={<Users size={18} />} label="Users" active={page === 'users'} onClick={() => setPage('users')} />
+          <NavBtn icon={<MapPin size={18} />} label="Locations" active={page === 'locations'} onClick={() => navigateTo('locations')} />
+          <NavBtn icon={<AlertCircle size={18} />} label="Notifications" active={page === 'notifications'} onClick={() => navigateTo('notifications')} />
+          <NavBtn icon={<List size={18} />} label="Live Queues" active={page === 'queues'} onClick={() => navigateTo('queues')} />
+          <NavBtn icon={<Users2 size={18} />} label="Passengers" active={page === 'passengers'} onClick={() => navigateTo('passengers')} />
+          <NavBtn icon={<Banknote size={18} />} label="Fares" active={page === 'fares'} onClick={() => navigateTo('fares')} />
+          <NavBtn icon={<Activity size={18} />} label="Activity" active={page === 'activity'} onClick={() => navigateTo('activity')} />
+          <NavBtn icon={<Users size={18} />} label="Users" active={page === 'users'} onClick={() => navigateTo('users')} />
         </nav>
 
-        <button onClick={logout} style={styles.logoutBtn}>
+        <button onClick={() => { logout(); setSidebarOpen(false) }} style={styles.logoutBtn}>
           <LogOut size={16} /> Sign out
         </button>
       </div>
 
-      <div style={styles.content}>
+      <div className="app-content" style={styles.content}>
         <div style={styles.pageWrap}>
           {page === 'locations' && <LocationsPage />}
           {page === 'notifications' && <NotificationsPage />}
@@ -128,6 +149,7 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     gap: 8,
+    flexShrink: 0,
   },
   sidebarLogo: {
     display: 'flex',
@@ -217,4 +239,3 @@ const styles = {
     marginBottom: 28,
   },
 }
-

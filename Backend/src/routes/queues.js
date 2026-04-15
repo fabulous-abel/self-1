@@ -7,9 +7,16 @@ const {
   getQueueDetails,
   listQueues,
   removePassengerFromQueue,
+  getAvailableDriversCount,
 } = require("../store/devData");
 
 const router = express.Router();
+
+router.get("/nearby-drivers", (req, res) => {
+  return res.json({
+    availableDrivers: getAvailableDriversCount(),
+  });
+});
 
 router.get("/", (req, res) => {
   res.json({

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter/services.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:geolocator/geolocator.dart';
 
 import '../../core/services/queue_api_service.dart';
 import '../../core/theme/app_theme.dart';
@@ -100,6 +101,8 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
   bool _isLeaving = false;
   MatchedRide? _matchedRide;
   VoidCallback? _cancelSocketSub; // call to unsubscribe
+  int _nearbyDrivers = 0;
+  Timer? _nearbyTimer;
 
   @override
   void initState() {
@@ -109,10 +112,12 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
     _selectedQueue = _queues.first;
     _expandedQueueId = _selectedQueue.backendId;
     unawaited(_loadQueues());
+    unawaited(_initLocation());
   }
 
   @override
   void dispose() {
+    _nearbyTimer?.cancel();
     _cancelSocketSub?.call();
     QueueApiService.instance.disconnectSocket();
     _searchController.dispose();
@@ -122,6 +127,49 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
   }
 
   List<_QueueItem> get _visibleQueues => _filterQueues(_query);
+
+  Future<void> _initLocation() async {
+    bool serviceEnabled;
+    LocationPermission permission;
+
+    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) return;
+
+    permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) return;
+    }
+
+    if (permission == LocationPermission.deniedForever) return;
+
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+      if (!mounted) return;
+
+      final userPoint = LatLng(position.latitude, position.longitude);
+      _moveMap(userPoint, zoom: 14.5);
+    } catch (e) {
+      debugPrint('[PassengerMap] could not get initial position: $e');
+    }
+
+    // Start polling for nearby drivers
+    _updateNearbyDrivers();
+    _nearbyTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      _updateNearbyDrivers();
+    });
+  }
+
+  Future<void> _updateNearbyDrivers() async {
+    try {
+      final count = await QueueApiService.instance.getNearbyDriversCount();
+      if (mounted) {
+        setState(() => _nearbyDrivers = count);
+      }
+    } catch (_) {}
+  }
 
   Future<void> _loadQueues() async {
     try {
@@ -1329,13 +1377,39 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                  'LinkEt Self',
-                                  style: TextStyle(
-                                    fontSize: compact ? 18 : 20,
-                                    fontWeight: FontWeight.w800,
-                                    color: Colors.white,
-                                  ),
+                                Row(
+                                  children: [
+                                    Text(
+                                      'LinkEt Self',
+                                      style: TextStyle(
+                                        fontSize: compact ? 18 : 20,
+                                        fontWeight: FontWeight.w800,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                    if (_nearbyDrivers > 0) ...[
+                                      const SizedBox(width: 8),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 6,
+                                          vertical: 2,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: Colors.green.shade500,
+                                          borderRadius:
+                                              BorderRadius.circular(6),
+                                        ),
+                                        child: Text(
+                                          '$_nearbyDrivers LIVE',
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 9,
+                                            fontWeight: FontWeight.w900,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
                                 ),
                                 Text(
                                   widget.profile.fullName,

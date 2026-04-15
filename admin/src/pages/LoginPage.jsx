@@ -28,8 +28,8 @@ export default function LoginPage() {
 
   return (
     <div style={styles.root}>
-      <div style={styles.shell}>
-        <section style={styles.leftPanel}>
+      <div className="login-shell" style={styles.shell}>
+        <section className="login-left-panel" style={styles.leftPanel}>
           <Link to="/" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 14 }}>
             <div style={styles.logoCircle}>
               <Code size={24} color="#ffffff" />
@@ -41,12 +41,12 @@ export default function LoginPage() {
           </Link>
 
           <div style={styles.eyebrow}>Secure Login</div>
-          <h1 style={styles.heroTitle}>Manage your web projects from a single unified dashboard.</h1>
+          <h1 className="login-hero-title" style={styles.heroTitle}>Manage your web projects from a single unified dashboard.</h1>
           <p style={styles.heroCopy}>
             Review project milestones, submit tickets, view analytics, and collaborate with our development team seamlessly.
           </p>
 
-          <div style={styles.featureGrid}>
+          <div className="login-feature-grid" style={styles.featureGrid}>
             <FeatureCard
               icon={<Layout size={20} color="#F39C12" />}
               title="Project Tracking"
@@ -66,9 +66,9 @@ export default function LoginPage() {
 
         </section>
 
-        <section style={styles.rightPanel}>
+        <section className="login-right-panel" style={styles.rightPanel}>
           <div style={styles.formCard}>
-            <h2 style={styles.heading}>Access Your Account</h2>
+            <h2 className="login-heading" style={styles.heading}>Access Your Account</h2>
             <p style={styles.sub}>
               Enter your credentials to access your dedicated project workspace.
             </p>

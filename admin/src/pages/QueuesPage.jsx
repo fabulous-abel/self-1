@@ -110,10 +110,10 @@ export default function QueuesPage() {
   return (
     <div>
       {/* Header */}
-      <div style={s.headerRow}>
+      <div className="page-header-row" style={s.headerRow}>
         <div>
-          <h1 style={s.title}>Live Queues</h1>
-          <p style={s.sub}>Real-time view of all active queues. Click a queue to manage its passengers.</p>
+          <h1 className="page-title" style={s.title}>Live Queues</h1>
+          <p className="page-sub" style={s.sub}>Real-time view of all active queues. Click a queue to manage its passengers.</p>
         </div>
         <div style={s.headerRight}>
           <div style={statusPill(online)}>
@@ -128,7 +128,7 @@ export default function QueuesPage() {
 
       {/* Stats row */}
       {!loading && (
-        <div style={s.statsRow}>
+        <div className="summary-row queue-stats-row" style={s.statsRow}>
           <StatCard label="Total queues" value={queues.length} color="#1d4ed8" />
           <StatCard
             label="Total waiting"
@@ -157,7 +157,7 @@ export default function QueuesPage() {
           </p>
         </div>
       ) : (
-        <div style={s.grid}>
+        <div className="queues-grid" style={s.grid}>
           {queues.map(q => (
             <QueueCard key={q.id} queue={q} onView={() => openDetail(q)} />
           ))}
@@ -167,8 +167,8 @@ export default function QueuesPage() {
       {/* Detail modal */}
       {selectedQueue && (
         <div style={s.overlay} onClick={() => setSelectedQueue(null)}>
-          <div style={s.modal} onClick={e => e.stopPropagation()}>
-            <div style={s.modalHeader}>
+          <div className="queue-modal" style={s.modal} onClick={e => e.stopPropagation()}>
+            <div className="queue-modal-header" style={s.modalHeader}>
               <div>
                 <div style={s.modalTitle}>{selectedQueue.name}</div>
                 <div style={s.modalSub}>{selectedQueue.type} queue · {selectedQueue.waitingCount ?? 0} waiting</div>
@@ -184,7 +184,7 @@ export default function QueuesPage() {
               <p style={{ padding: '24px', color: '#64748b' }}>No passengers in this queue.</p>
             ) : (
               <div style={s.tableWrap}>
-                <table style={s.table}>
+                <table className="responsive-table" style={s.table}>
                   <thead>
                     <tr>
                       {['#', 'Name', 'Pickup', 'Destination', 'Status', 'Joined', 'Action'].map(h => (

@@ -90,18 +90,18 @@ export default function NotificationsPage() {
 
   return (
     <div>
-      <div style={styles.headerRow}>
+      <div className="page-header-row" style={styles.headerRow}>
         <div>
-          <h1 style={styles.title}>Broadcast Center</h1>
-          <p style={styles.sub}>Publish broadcast messages to driver and passenger apps with modal-based actions.</p>
+          <h1 className="page-title" style={styles.title}>Broadcast Center</h1>
+          <p className="page-sub" style={styles.sub}>Publish broadcast messages to driver and passenger apps with modal-based actions.</p>
         </div>
 
-        <button type="button" onClick={openComposer} style={styles.primaryBtn}>
+        <button type="button" onClick={openComposer} className="primary-btn" style={styles.primaryBtn}>
           <Sparkles size={18} /> New Broadcast
         </button>
       </div>
 
-      <div style={styles.summaryRow}>
+      <div className="summary-row" style={styles.summaryRow}>
         <SummaryCard label="Live Broadcasts" value={broadcasts.length} />
         <SummaryCard label="Latest Audience" value={broadcasts[0] ? formatAudience(broadcasts[0].target) : 'None'} />
         <SummaryCard label="Last Published" value={broadcasts[0] ? formatDateTime(getBroadcastTimestamp(broadcasts[0])) : 'No broadcasts'} />
@@ -109,7 +109,7 @@ export default function NotificationsPage() {
 
       {notice ? <div style={styles.notice}>{notice}</div> : null}
 
-      <div style={styles.tableCard}>
+      <div className="table-card" style={styles.tableCard}>
         <div style={styles.cardHeader}>
           <div style={styles.cardTitle}>Live Broadcasts</div>
           <div style={styles.cardSub}>Each row can be opened in a modal for full review before you edit and republish it.</div>
@@ -119,7 +119,7 @@ export default function NotificationsPage() {
           <div style={styles.empty}>No broadcasts yet. Start from the "New Broadcast" modal.</div>
         ) : (
           <div style={styles.tableWrap}>
-            <table style={styles.table}>
+            <table className="responsive-table" style={styles.table}>
               <thead>
                 <tr>
                   <th style={styles.th}>Audience</th>
@@ -137,7 +137,7 @@ export default function NotificationsPage() {
                     <td style={styles.td}>{truncate(item.message, 88)}</td>
                     <td style={styles.td}>{formatDateTime(getBroadcastTimestamp(item))}</td>
                     <td style={styles.actionCell}>
-                      <div style={styles.actionGroup}>
+                      <div className="action-group" style={styles.actionGroup}>
                         <button type="button" style={styles.ghostBtn} onClick={() => setSelectedBroadcast(item)}>
                           <Eye size={16} /> View
                         </button>
@@ -160,7 +160,7 @@ export default function NotificationsPage() {
         title={editingBroadcast ? 'Edit Broadcast' : 'Compose Broadcast'}
         subtitle={editingBroadcast ? 'Update the selected live broadcast.' : 'Publish a live broadcast for the selected audience.'}
         footer={(
-          <div style={styles.modalFooter}>
+          <div className="modal-footer" style={styles.modalFooter}>
             <button type="button" onClick={closeComposer} style={styles.secondaryBtn}>Cancel</button>
             <button type="submit" form="broadcast-form" disabled={saving} style={styles.primaryBtn}>
               <Send size={18} /> {saving ? 'Saving...' : editingBroadcast ? 'Update Broadcast' : 'Publish Broadcast'}
@@ -170,7 +170,7 @@ export default function NotificationsPage() {
       >
         <form id="broadcast-form" onSubmit={handleSave}>
           <label style={styles.label}>Select Audience</label>
-          <div style={styles.audienceRow}>
+          <div className="audience-row" style={styles.audienceRow}>
             {['both', 'passengers', 'drivers'].map(option => (
               <button
                 key={option}

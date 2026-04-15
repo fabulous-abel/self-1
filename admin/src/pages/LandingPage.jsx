@@ -1,11 +1,13 @@
-import React from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   ArrowRight, Mail, Phone, MapPin, Send, 
-  Code, Smartphone, Layout, Server, CheckCircle, Zap
+  Code, Smartphone, Layout, Server, CheckCircle, Zap, Menu, X
 } from 'lucide-react';
 
 export default function LandingPage() {
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
+
   return (
     <div style={styles.root}>
       {/* Navigation */}
@@ -17,37 +19,45 @@ export default function LandingPage() {
             </div>
             <span style={styles.logoText}>LinkEt Web Solutions</span>
           </div>
-          <div style={styles.navLinks}>
-            <a href="#services" style={styles.navLink}>Services</a>
-            <a href="#packages" style={styles.navLink}>Packages</a>
-            <a href="#contact" style={styles.navLink}>Contact</a>
-            <Link to="/login" style={styles.loginBtn}>
+          <div className={`landing-nav-links ${mobileNavOpen ? 'open' : ''}`} style={styles.navLinks}>
+            {mobileNavOpen && (
+              <button className="mobile-nav-close" onClick={() => setMobileNavOpen(false)}>
+                <X size={24} />
+              </button>
+            )}
+            <a href="#services" style={styles.navLink} onClick={() => setMobileNavOpen(false)}>Services</a>
+            <a href="#packages" style={styles.navLink} onClick={() => setMobileNavOpen(false)}>Packages</a>
+            <a href="#contact" style={styles.navLink} onClick={() => setMobileNavOpen(false)}>Contact</a>
+            <Link to="/login" style={styles.loginBtn} onClick={() => setMobileNavOpen(false)}>
               Client Login <ArrowRight size={16} />
             </Link>
           </div>
+          <button className="mobile-nav-toggle" onClick={() => setMobileNavOpen(true)}>
+            <Menu size={24} />
+          </button>
         </div>
       </nav>
 
       {/* Hero Section */}
-      <header style={styles.hero}>
+      <header className="landing-hero" style={styles.hero}>
         <div style={styles.heroBackground}>
           <div style={styles.blob1}></div>
           <div style={styles.blob2}></div>
         </div>
-        <div style={styles.heroContent}>
-          <div style={styles.heroText}>
+        <div className="landing-hero-content" style={styles.heroContent}>
+          <div className="landing-hero-text" style={styles.heroText}>
             <div style={styles.tag}><Zap size={14} /> Modern Web Development</div>
-            <h1 style={styles.title}>Crafting Digital <span style={styles.accentText}>Experiences</span> That Inspire.</h1>
+            <h1 className="landing-hero-title" style={styles.title}>Crafting Digital <span style={styles.accentText}>Experiences</span> That Inspire.</h1>
             <p style={styles.subtitle}>
               We build fast, responsive, and beautifully designed web applications. 
               Elevate your digital presence with our cutting-edge development services.
             </p>
-            <div style={styles.heroActions}>
+            <div className="landing-hero-actions" style={styles.heroActions}>
               <a href="#packages" style={styles.primaryBtn}>Explore Packages</a>
               <a href="#services" style={styles.secondaryBtn}>Our Services</a>
             </div>
           </div>
-          <div style={styles.heroGraphic}>
+          <div className="landing-hero-graphic" style={styles.heroGraphic}>
             <div style={styles.heroCardsContainer}>
               {/* Graphic representation of code / web view */}
               <div style={styles.graphicCardMain}>
@@ -73,15 +83,15 @@ export default function LandingPage() {
       </header>
 
       {/* Services Section */}
-      <section id="services" style={styles.sectionLight}>
+      <section id="services" className="landing-section-light" style={styles.sectionLight}>
         <div style={styles.sectionContainer}>
           <div style={styles.sectionHeader}>
             <div style={{...styles.tag, background: 'rgba(29, 105, 100, 0.1)', color: '#1D6964'}}>What We Do</div>
-            <h2 style={{...styles.sectionTitle, color: '#0f172a'}}>Our Premium Services</h2>
+            <h2 className="landing-section-title" style={{...styles.sectionTitle, color: '#0f172a'}}>Our Premium Services</h2>
             <p style={{...styles.sectionSubtitle, color: '#64748b'}}>Comprehensive solutions to bring your vision to absolute reality.</p>
           </div>
           
-          <div style={styles.servicesGrid}>
+          <div className="landing-services-grid" style={styles.servicesGrid}>
             {[
               { icon: <Layout />, title: "Web Design", desc: "Stunning, user-centric interfaces tailored to your brand identity." },
               { icon: <Code />, title: "Custom Development", desc: "Robust and scalable web applications built with modern tools." },
@@ -99,15 +109,15 @@ export default function LandingPage() {
       </section>
 
       {/* Packages Section */}
-      <section id="packages" style={styles.sectionDark}>
+      <section id="packages" className="landing-section-dark" style={styles.sectionDark}>
         <div style={styles.sectionContainer}>
           <div style={styles.sectionHeader}>
             <div style={styles.tag}>Pricing</div>
-            <h2 style={styles.sectionTitle}>Development Packages</h2>
+            <h2 className="landing-section-title" style={styles.sectionTitle}>Development Packages</h2>
             <p style={styles.sectionSubtitle}>Choose the perfect plan for your project's scale and needs.</p>
           </div>
 
-          <div style={styles.packagesGrid}>
+          <div className="landing-packages-grid" style={styles.packagesGrid}>
             {[
               {
                 title: "Starter",
@@ -131,7 +141,7 @@ export default function LandingPage() {
                 highlight: false
               }
             ].map((pkg, i) => (
-              <div key={i} style={pkg.highlight ? styles.packageCardHit : styles.packageCard}>
+              <div key={i} className={pkg.highlight ? 'landing-package-highlight' : ''} style={pkg.highlight ? styles.packageCardHit : styles.packageCard}>
                 {pkg.highlight && <div style={styles.popularBadge}>Most Popular</div>}
                 <h3 style={{...styles.pkgTitle, color: pkg.highlight ? '#ffffff' : '#0f172a'}}>{pkg.title}</h3>
                 <div style={{...styles.pkgPrice, color: pkg.highlight ? '#F39C12' : '#1D6964'}}>{pkg.price}</div>
@@ -154,14 +164,14 @@ export default function LandingPage() {
       </section>
 
       {/* Contact Section */}
-      <section id="contact" style={styles.contactSection}>
+      <section id="contact" className="landing-contact-section" style={styles.contactSection}>
         <div style={styles.sectionHeader}>
           <div style={{...styles.tag, background: 'rgba(29, 105, 100, 0.1)', color: '#1D6964'}}>Reach Out</div>
-          <h2 style={{...styles.sectionTitle, color: '#0f172a'}}>Let's Build Together</h2>
+          <h2 className="landing-section-title" style={{...styles.sectionTitle, color: '#0f172a'}}>Let's Build Together</h2>
           <p style={{...styles.sectionSubtitle, color: '#64748b'}}>Ready to start your project? We are just a message away.</p>
         </div>
         
-        <div style={styles.contactGrid}>
+        <div className="landing-contact-grid" style={styles.contactGrid}>
           <div style={styles.contactInfo}>
             <div style={styles.infoCard}>
               <div style={styles.infoIcon}><Mail size={20} /></div>
@@ -186,8 +196,8 @@ export default function LandingPage() {
             </div>
           </div>
 
-          <form style={styles.contactForm} onSubmit={(e) => e.preventDefault()}>
-            <div style={styles.formRow}>
+          <form className="landing-contact-form" style={styles.contactForm} onSubmit={(e) => e.preventDefault()}>
+            <div className="landing-form-row" style={styles.formRow}>
               <div style={styles.inputGroup}>
                 <label style={styles.label}>Full Name</label>
                 <input type="text" placeholder="John Doe" style={styles.input} />
